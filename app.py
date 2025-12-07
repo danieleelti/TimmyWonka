@@ -7,7 +7,7 @@ import aiversion  # Il modulo versioni che abbiamo creato
 # --- 1. CONFIGURAZIONE PAGINA ---
 st.set_page_config(
     page_title="Timmy Wonka R&D",
-    page_icon="🎩",
+    page_icon="🦁",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -33,7 +33,6 @@ def check_password():
         st.error("⚠️ ERRORE: Password non configurata nei Secrets!")
         st.stop()
 
-    # Controlla se l'input esiste (per evitare errori al primo caricamento)
     if "password_input" in st.session_state:
         if st.session_state.password_input == secret_password:
             st.session_state.authenticated = True
@@ -47,13 +46,8 @@ if not st.session_state.authenticated:
     with col2:
         st.title("🔒 Timmy Wonka R&D")
         st.info("Inserisci la password per accedere.")
-        
-        # Campo Password
         st.text_input("Password", type="password", key="password_input", on_change=check_password)
-        
-        # Pulsante Entra (chiama la stessa funzione)
         st.button("Entra 🔓", on_click=check_password)
-        
     st.stop()
 
 # ==============================================================================
@@ -134,7 +128,6 @@ with st.expander("🧠 Configurazione Cervello AI & Versioni", expanded=True):
         provider = st.selectbox("1. Scegli Provider", ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"])
 
     with col_ai2:
-        # Recupero API Key
         api_key = ""
         key_map = {
             "Google Gemini": "GOOGLE_API_KEY",
@@ -152,7 +145,6 @@ with st.expander("🧠 Configurazione Cervello AI & Versioni", expanded=True):
             api_key = st.text_input("Inserisci API Key manuale", type="password")
 
     with col_ai3:
-        # Recupero Versioni Dinamiche
         available_models = []
         if api_key:
             if provider == "Google Gemini": available_models = aiversion.get_gemini_models(api_key)
@@ -170,40 +162,40 @@ st.divider()
 
 # --- SIDEBAR: PARAMETRI & VIBE ---
 with st.sidebar:
-    st.title("🎛️ Parametri Format")
+    # MODIFICA APPLICATA QUI
+    st.title("🆕 Nuovo Format")
     
     # 1. Vibe & Keywords
     st.subheader("1. Vibe & Keywords 🎨")
     vibes_input = st.text_area(
         "Stile & Atmosfera", 
         placeholder="Es. Lusso, Adrenalinico, Sostenibile, Cyberpunk, Elegante, Competitivo...", 
-        height=100,
+        height=150, 
         help="Aggettivi che definiscono l'atmosfera e lo stile del format."
     )
 
     st.divider()
 
-    # 2. Budget Control (ETICHETTE IN ITALIANO)
+    # 2. Budget Control (VERTICALE)
     st.subheader("2. Budget Control 💰")
-    col_b1, col_b2 = st.columns(2)
-    with col_b1: 
-        capex = st.number_input("Costo una tantum (€)", 2000, help="Spese fisse iniziali (es. attrezzatura)")
-    with col_b2: 
-        opex = st.number_input("Costo materiali a persona (€)", 15, help="Spese variabili per ogni partecipante")
-    
+    capex = st.number_input("Costo una tantum (€)", 2000, help="Spese fisse iniziali (es. attrezzatura)")
+    opex = st.number_input("Costo materiali a persona (€)", 15, help="Spese variabili per ogni partecipante")
     rrp = st.number_input("Costo di vendita a persona (€)", 120, help="Prezzo al cliente finale")
 
     st.divider()
 
-    # 3. Logistica
+    # 3. Logistica (MODIFICATA)
     st.subheader("3. Logistica 📦")
-    pax_range = st.slider("Partecipanti (Pax)", 10, 500, (30, 100))
+    
     tech_level = st.select_slider("Livello Tech", ["Low Tech", "Hybrid", "High Tech"])
-    location = st.selectbox("Location", ["Indoor", "Outdoor", "Ibrido", "Remoto"])
+    
+    phys_level = st.select_slider("Livello Fisico", ["Sedentario (Mental)", "Leggero (Movimento)", "Attivo (Sport)"])
+    
+    location = st.selectbox("Location", ["Indoor", "Outdoor", "Durante i pasti (Dinner Game)", "Ibrido", "Remoto"])
 
 # --- CORPO PRINCIPALE ---
 st.title("🎩💡🎯 Timmy Wonka e la fabbrica dei Format 🏆🧠💰")
-st.caption(f"Motore: {selected_model} | Costi Fissi: {capex}€ | Costi Variabili: {opex}€/pax")
+st.caption(f"Motore: {selected_model} | Budget Una Tantum: {capex}€")
 
 # Gestione Stato
 if "phase" not in st.session_state: st.session_state.phase = 1
@@ -217,20 +209,23 @@ activity_input = st.text_input("Tema Base dell'Attività", placeholder="Es. Cena
 
 if st.button("Inventa 3 Concept", type="primary"):
     with st.spinner(f"Timmy ({selected_model}) sta elaborando con stile: {vibes_input}..."):
-        # PROMPT AGGIORNATO CON I VIBES
+        # PROMPT 
         prompt = f"""
         ESEGUI FASE 1. 
         Tema Base: {activity_input}
-        VIBE/KEYWORDS RICHIESTE: {vibes_input if vibes_input else "Nessuna specifica (usa creatività standard)"}
+        VIBE/KEYWORDS RICHIESTE: {vibes_input if vibes_input else "Standard creativo"}
 
         Budget: 
         - Costo Una Tantum (CAPEX): {capex}€
         - Costo Materiali a persona (OPEX): {opex}€/pax
         - Prezzo Vendita Target: {rrp}€/pax
         
-        Logistica: Pax: {pax_range}, Tech: {tech_level}, Loc: {location}.
+        Logistica: 
+        - Tech Level: {tech_level}
+        - Fisicità richiesta: {phys_level}
+        - Location: {location}
         
-        Dammi 3 concept distinti che rispettino i vibe indicati.
+        Dammi 3 concept distinti che rispettino i vibe e la logistica indicata.
         """
         response = call_ai(provider, selected_model, api_key, prompt)
         st.session_state.concepts = response
@@ -272,4 +267,4 @@ if st.session_state.assets:
             st.download_button("Scarica Slide (.txt)", data=response, file_name=f"Pitch_{st.session_state.selected_concept}.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v1.5 - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v1.7 - Powered by Teambuilding.it")
