@@ -2,12 +2,47 @@ import streamlit as st
 import google.generativeai as genai
 from openai import OpenAI
 from anthropic import Anthropic
-import aiversion  # Il modulo versioni che abbiamo creato
+import aiversion  # Modulo versioni
+import json
+import os
+from datetime import datetime
+
+# --- 0. GESTIONE DATABASE (JSON LOCALE) ---
+DB_FILE = "db_ideas.json"
+
+def load_db():
+    """Carica il database delle idee o ne crea uno vuoto."""
+    if not os.path.exists(DB_FILE):
+        return []
+    try:
+        with open(DB_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return []
+
+def save_to_db(title, theme, vibe, created_by):
+    """Salva una nuova idea nel database."""
+    ideas = load_db()
+    # Evita duplicati basati sul titolo
+    if any(i['title'] == title for i in ideas):
+        return False # Già esiste
+    
+    new_idea = {
+        "title": title,
+        "theme": theme,
+        "vibe": vibe,
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "created_by": created_by
+    }
+    ideas.append(new_idea)
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(ideas, f, indent=4, ensure_ascii=False)
+    return True
 
 # --- 1. CONFIGURAZIONE PAGINA ---
 st.set_page_config(
     page_title="Timmy Wonka R&D",
-    page_icon="🦁",  # AGGIORNATO: Il Leone
+    page_icon="🦁",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -18,7 +53,7 @@ st.markdown("""
     .big-font { font-size:24px !important; font-weight: bold; color: #6C3483; }
     .stButton>button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; }
     .success-box { padding: 10px; background-color: #d4edda; color: #155724; border-radius: 5px; margin-bottom: 10px; font-weight: bold;}
-    .ai-setup-box { border: 1px solid #ddd; padding: 15px; border-radius: 10px; background-color: #f9f9f9; margin-bottom: 20px;}
+    .db-box { border: 1px solid #FFD700; padding: 15px; border-radius: 10px; background-color: #fffdf0; margin-bottom: 20px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -187,15 +222,11 @@ with st.sidebar:
     st.subheader("3. Logistica 📦")
     
     tech_level = st.select_slider("Livello Tech", ["Low Tech", "Hybrid", "High Tech"])
-    
     phys_level = st.select_slider("Livello Fisico", ["Sedentario (Mental)", "Leggero (Movimento)", "Attivo (Sport)"])
-    
-    # MODIFICA: Multiselect per Location
     location_list = st.multiselect(
         "Location (Scelta multipla)", 
         ["Indoor", "Outdoor", "Durante i pasti (Dinner Game)", "Ibrido", "Remoto"],
-        default=["Indoor"],
-        help="Seleziona tutte le modalità applicabili"
+        default=["Indoor"]
     )
 
 # --- CORPO PRINCIPALE ---
@@ -207,47 +238,87 @@ if "phase" not in st.session_state: st.session_state.phase = 1
 if "concepts" not in st.session_state: st.session_state.concepts = ""
 if "selected_concept" not in st.session_state: st.session_state.selected_concept = ""
 if "assets" not in st.session_state: st.session_state.assets = ""
+if "idea_saved" not in st.session_state: st.session_state.idea_saved = False
 
-# FASE 1: IDEAZIONE
+# --- SEZIONE ARCHIVIO (NUOVO) ---
+# Permette di ricaricare idee vecchie per analizzarle con l'AI corrente
+with st.expander("📂 Archivio Idee Salvate (Database)", expanded=False):
+    saved_ideas = load_db()
+    if not saved_ideas:
+        st.info("Il database è vuoto. Salva qualche idea dalla Fase 1!")
+    else:
+        # Crea lista titoli per il selectbox
+        titles = [i['title'] for i in saved_ideas]
+        selected_db_title = st.selectbox("Seleziona un'idea da approfondire:", ["-- Scegli --"] + titles)
+        
+        if selected_db_title != "-- Scegli --":
+            # Recupera i dati dell'idea
+            idea_data = next(i for i in saved_ideas if i['title'] == selected_db_title)
+            
+            st.markdown(f"**Tema Originale:** {idea_data['theme']} | **Vibe:** {idea_data['vibe']}")
+            st.caption(f"Salvata il: {idea_data['date']} | Creata da: {idea_data.get('created_by', 'AI')}")
+            
+            if st.button("🔽 Carica questa Idea per Approfondimento"):
+                st.session_state.selected_concept = idea_data['title']
+                # Precarichiamo anche i vibe originali se l'utente vuole coerenza
+                # st.session_state.vibes_input = idea_data['vibe'] 
+                st.success(f"Caricato: {idea_data['title']}. Ora scorri giù alla Fase 2!")
+
+# --- FASE 1: IDEAZIONE ---
 st.header("Fase 1: Ideazione Concept 💡")
 activity_input = st.text_input("Tema Base dell'Attività", placeholder="Es. Cena con delitto, Robot Wars, Cooking Class...")
 
 if st.button("Inventa 3 Concept", type="primary"):
     with st.spinner(f"Timmy ({selected_model}) sta elaborando con stile: {vibes_input}..."):
-        # Formattazione lista location per il prompt
-        loc_str = ", ".join(location_list) if location_list else "Qualsiasi/Non Specificato"
-        
+        loc_str = ", ".join(location_list) if location_list else "Qualsiasi"
         prompt = f"""
         ESEGUI FASE 1. 
         Tema Base: {activity_input}
-        VIBE/KEYWORDS RICHIESTE: {vibes_input if vibes_input else "Standard creativo"}
-
-        Budget: 
-        - Costo Una Tantum (CAPEX): {capex}€
-        - Costo Materiali a persona (OPEX): {opex}€/pax
-        - Prezzo Vendita Target: {rrp}€/pax
-        
-        Logistica: 
-        - Tech Level: {tech_level}
-        - Fisicità richiesta: {phys_level}
-        - Location (Setup supportati): {loc_str}
-        
-        Dammi 3 concept distinti che rispettino i vibe e la logistica indicata.
+        VIBE: {vibes_input if vibes_input else "Standard creativo"}
+        Budget: CAPEX {capex}€, OPEX {opex}€/pax, RRP {rrp}€/pax
+        Logistica: Tech {tech_level}, Fisicità {phys_level}, Location {loc_str}
+        Dammi 3 concept distinti.
         """
         response = call_ai(provider, selected_model, api_key, prompt)
         st.session_state.concepts = response
+        st.session_state.idea_saved = False # Reset stato salvataggio
 
 if st.session_state.concepts:
     st.markdown(st.session_state.concepts)
     st.divider()
-    st.info("Copia titolo concept:")
-    st.session_state.selected_concept = st.text_input("Titolo Concept Scelto", value=st.session_state.selected_concept)
+    
+    col_sel1, col_sel2 = st.columns([3, 1])
+    with col_sel1:
+        st.info("Copia qui sotto il titolo del concept che ti piace:")
+        st.session_state.selected_concept = st.text_input("Titolo Concept Scelto", value=st.session_state.selected_concept)
+    
+    # PULSANTE SALVA IDEA
+    with col_sel2:
+        st.markdown("<br>", unsafe_allow_html=True) # Spaziatura
+        if st.session_state.selected_concept and not st.session_state.idea_saved:
+            if st.button("💾 Salva nel DB"):
+                success = save_to_db(st.session_state.selected_concept, activity_input, vibes_input, selected_model)
+                if success:
+                    st.success("Salvata!")
+                    st.session_state.idea_saved = True
+                else:
+                    st.warning("Già presente!")
+        elif st.session_state.idea_saved:
+            st.button("✅ Idea in Archivio", disabled=True)
 
-# FASE 2: PRODUZIONE
+# --- FASE 2: PRODUZIONE (Deep Dive) ---
 if st.session_state.selected_concept:
-    st.header("Fase 2: Scheda Tecnica 🛠️")
-    if st.button("Genera Materiali"):
-        with st.spinner("Creazione asset..."):
+    st.header("Fase 2: Scheda Tecnica & Deep Dive 🛠️")
+    st.markdown(f"Stai lavorando su: **{st.session_state.selected_concept}**")
+    
+    # Messaggio che spiega la funzionalità multi-AI
+    st.info(f"💡 Suggerimento: Puoi cambiare l'AI nel pannello in alto (es. da GPT a Claude) e cliccare il pulsante qui sotto per vedere come un'altra intelligenza sviluppa la stessa idea.")
+    
+    # Pulsante Dinamico
+    btn_label = f"🚀 Approfondisci con {provider} ({selected_model})"
+    
+    if st.button(btn_label):
+        with st.spinner(f"Timmy ({selected_model}) sta progettando il format..."):
             prompt = f"""
             ESEGUI FASE 2 per: "{st.session_state.selected_concept}". 
             Tema Originale: {activity_input}. Vibe: {vibes_input}.
@@ -257,14 +328,14 @@ if st.session_state.selected_concept:
             st.session_state.assets = response
 
 if st.session_state.assets:
-    with st.expander("📂 VEDI SCHEDA TECNICA", expanded=True):
+    with st.expander("📂 VEDI SCHEDA TECNICA COMPLETA", expanded=True):
         st.markdown(st.session_state.assets)
 
-# FASE 3: VENDITA
+# --- FASE 3: VENDITA ---
 if st.session_state.assets:
     st.header("Fase 3: Sales Pitch 💼")
-    if st.button("Genera Slide"):
-        with st.spinner("Creazione pitch..."):
+    if st.button("Genera Slide di Vendita"):
+        with st.spinner(f"Creazione pitch con {selected_model}..."):
             prompt = f"""
             ESEGUI FASE 3 per: "{st.session_state.selected_concept}". Target: HR. Prezzo: {rrp}€. Vibe: {vibes_input}.
             Crea testo per 6 Slide.
@@ -274,4 +345,4 @@ if st.session_state.assets:
             st.download_button("Scarica Slide (.txt)", data=response, file_name=f"Pitch_{st.session_state.selected_concept}.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v1.8 - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v1.9 - Powered by Teambuilding.it")
