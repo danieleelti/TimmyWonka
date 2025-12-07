@@ -3,3 +3,5 @@ google-generativeai
 openai
 anthropic
 groq
+gspread
+oauth2client
