@@ -17,7 +17,8 @@ st.markdown("""
 <style>
     .big-font { font-size:24px !important; font-weight: bold; color: #6C3483; }
     .stButton>button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; }
-    .success-box { padding: 10px; background-color: #d4edda; color: #155724; border-radius: 5px; margin-bottom: 10px; }
+    .success-box { padding: 10px; background-color: #d4edda; color: #155724; border-radius: 5px; margin-bottom: 10px; font-weight: bold;}
+    .ai-setup-box { border: 1px solid #ddd; padding: 15px; border-radius: 10px; background-color: #f9f9f9; margin-bottom: 20px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -113,82 +114,89 @@ def call_ai(provider, model_id, api_key, prompt):
     except Exception as e:
         return f"❌ ERRORE API ({provider} - {model_id}): {str(e)}"
 
-# --- 4. SIDEBAR DINAMICA ---
-with st.sidebar:
-    st.title("🏭 Fabbrica R&D")
+# ==============================================================================
+# INTERFACCIA UTENTE
+# ==============================================================================
+
+# --- SEZIONE SUPERIORE: SETUP AI (Spostato qui dalla Sidebar) ---
+with st.expander("🧠 Configurazione Cervello AI & Versioni", expanded=True):
+    col_ai1, col_ai2, col_ai3 = st.columns([1, 1, 2])
     
-    # Bottone Logout semplice
-    if st.button("Logout 🔒"):
+    with col_ai1:
+        provider = st.selectbox("1. Scegli Provider", ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"])
+
+    with col_ai2:
+        # Recupero API Key
+        api_key = ""
+        key_map = {
+            "Google Gemini": "GOOGLE_API_KEY",
+            "ChatGPT": "OPENAI_API_KEY",
+            "Claude (Anthropic)": "ANTHROPIC_API_KEY",
+            "Groq": "GROQ_API_KEY",
+            "Grok (xAI)": "XAI_API_KEY"
+        }
+        secret_key_name = key_map[provider]
+        if secret_key_name in st.secrets:
+            api_key = st.secrets[secret_key_name]
+            st.markdown(f"<br>✅ **Key Caricata** da Secrets", unsafe_allow_html=True)
+        else:
+            st.warning(f"Manca {secret_key_name}")
+            api_key = st.text_input("Inserisci API Key manuale", type="password")
+
+    with col_ai3:
+        # Recupero Versioni Dinamiche
+        available_models = []
+        if api_key:
+            if provider == "Google Gemini": available_models = aiversion.get_gemini_models(api_key)
+            elif provider == "ChatGPT": available_models = aiversion.get_openai_models(api_key)
+            elif provider == "Claude (Anthropic)": available_models = aiversion.get_anthropic_models(api_key)
+            elif provider == "Groq": available_models = aiversion.get_openai_models(api_key, base_url="https://api.groq.com/openai/v1")
+            elif provider == "Grok (xAI)": available_models = aiversion.get_openai_models(api_key, base_url="https://api.x.ai/v1")
+        
+        if not available_models or "Errore" in available_models[0]:
+             selected_model = st.text_input("Versione (Inserimento manuale se lista fallisce)")
+        else:
+            selected_model = st.selectbox("2. Seleziona Versione Modello", available_models)
+
+st.divider()
+
+# --- SIDEBAR: PARAMETRI & VIBE (Riorganizzata) ---
+with st.sidebar:
+    st.title("🎛️ Parametri Format")
+    if st.button("Logout 🔒", key="logout_btn"):
         st.session_state.authenticated = False
         st.rerun()
+    st.divider()
+
+    # 1. Vibe & Keywords (NUOVO)
+    st.subheader("1. Vibe & Keywords")
+    vibes_input = st.text_area(
+        "Parole chiave per lo stile", 
+        placeholder="Es. Lusso, Adrenalinico, Sostenibile, Cyberpunk, Elegante, Competitivo...", 
+        height=100,
+        help="Aggettivi che definiscono l'atmosfera e lo stile del format."
+    )
 
     st.divider()
 
-    # --- SELEZIONE PROVIDER ---
-    st.subheader("1. Motore AI")
-    provider = st.selectbox("Provider", ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"])
-    
-    # Recupero API Key dai secrets
-    api_key = ""
-    key_map = {
-        "Google Gemini": "GOOGLE_API_KEY",
-        "ChatGPT": "OPENAI_API_KEY",
-        "Claude (Anthropic)": "ANTHROPIC_API_KEY",
-        "Groq": "GROQ_API_KEY",
-        "Grok (xAI)": "XAI_API_KEY"
-    }
-    
-    secret_key_name = key_map[provider]
-    if secret_key_name in st.secrets:
-        api_key = st.secrets[secret_key_name]
-        st.caption(f"🔑 Key caricata da Secrets")
-    else:
-        st.warning(f"⚠️ Manca {secret_key_name} nei secrets!")
-        api_key = st.text_input("Inserisci API Key manuale", type="password")
-
-    # --- RECUPERO VERSIONI (Chiamata a aiversion.py) ---
-    st.write("---")
-    st.caption("🔍 Scansione modelli disponibili...")
-    
-    available_models = []
-    
-    if api_key:
-        if provider == "Google Gemini":
-            available_models = aiversion.get_gemini_models(api_key)
-        elif provider == "ChatGPT":
-            available_models = aiversion.get_openai_models(api_key)
-        elif provider == "Claude (Anthropic)":
-            available_models = aiversion.get_anthropic_models(api_key)
-        elif provider == "Groq":
-            available_models = aiversion.get_openai_models(api_key, base_url="https://api.groq.com/openai/v1")
-        elif provider == "Grok (xAI)":
-            available_models = aiversion.get_openai_models(api_key, base_url="https://api.x.ai/v1")
-    
-    # Se la lista è vuota o contiene errori, gestisci il fallback
-    if not available_models or "Errore" in available_models[0]:
-        st.error(f"Impossibile recuperare modelli: {available_models}")
-        selected_model = st.text_input("Scrivi ID Modello Manualmente (es. gemini-1.5-pro)")
-    else:
-        # MENU A TENDINA CON LE VERSIONI REALI
-        selected_model = st.selectbox("Seleziona Versione", available_models)
-
-    st.info(f"Usando: **{selected_model}**")
+    # 2. Budget Control
+    st.subheader("2. Budget Control")
+    col_b1, col_b2 = st.columns(2)
+    with col_b1: capex = st.number_input("CAPEX (€)", 2000, help="Investimento Una Tantum")
+    with col_b2: opex = st.number_input("OPEX (€/pax)", 15, help="Costo vivo a persona")
+    rrp = st.number_input("RRP Prezzo Vendita (€/pax)", 120)
 
     st.divider()
 
-    # --- BUDGET & PARAMETRI ---
-    st.subheader("2. Parametri")
-    col1, col2 = st.columns(2)
-    with col1: capex = st.number_input("CAPEX (€)", 2000)
-    with col2: opex = st.number_input("OPEX (€/pax)", 15)
-    rrp = st.number_input("RRP (€/pax)", 120)
-    
-    pax_range = st.slider("Pax", 10, 500, (30, 100))
-    tech_level = st.select_slider("Tech", ["Low", "Hybrid", "High"])
+    # 3. Logistica
+    st.subheader("3. Logistica")
+    pax_range = st.slider("Partecipanti (Pax)", 10, 500, (30, 100))
+    tech_level = st.select_slider("Livello Tech", ["Low Tech", "Hybrid", "High Tech"])
     location = st.selectbox("Location", ["Indoor", "Outdoor", "Ibrido", "Remoto"])
 
-# --- 5. INTERFACCIA PRINCIPALE ---
+# --- CORPO PRINCIPALE ---
 st.title("🎩 Timmy Wonka e la fabbrica dei Format")
+st.caption(f"Using: {selected_model} | Budget: C:{capex}€ O:{opex}€")
 
 # Gestione Stato
 if "phase" not in st.session_state: st.session_state.phase = 1
@@ -196,17 +204,22 @@ if "concepts" not in st.session_state: st.session_state.concepts = ""
 if "selected_concept" not in st.session_state: st.session_state.selected_concept = ""
 if "assets" not in st.session_state: st.session_state.assets = ""
 
-# FASE 1
+# FASE 1: IDEAZIONE
 st.header("Fase 1: Ideazione Concept 💡")
-activity_input = st.text_input("Tema Attività", placeholder="Es. Cena con delitto, Robot Wars...")
+activity_input = st.text_input("Tema Base dell'Attività", placeholder="Es. Cena con delitto, Robot Wars, Cooking Class...")
 
 if st.button("Inventa 3 Concept", type="primary"):
-    with st.spinner(f"Timmy (v. {selected_model}) sta elaborando..."):
+    with st.spinner(f"Timmy ({selected_model}) sta elaborando con stile: {vibes_input}..."):
+        # PROMPT AGGIORNATO CON I VIBES
         prompt = f"""
-        ESEGUI FASE 1. Tema: {activity_input}
+        ESEGUI FASE 1. 
+        Tema Base: {activity_input}
+        VIBE/KEYWORDS RICHIESTE: {vibes_input if vibes_input else "Nessuna specifica (usa creatività standard)"}
+
         Budget: CAPEX {capex}€, OPEX {opex}€/pax, RRP {rrp}€/pax.
         Pax: {pax_range}, Tech: {tech_level}, Loc: {location}.
-        Dammi 3 concept distinti.
+        
+        Dammi 3 concept distinti che rispettino i vibe indicati.
         """
         response = call_ai(provider, selected_model, api_key, prompt)
         st.session_state.concepts = response
@@ -217,13 +230,14 @@ if st.session_state.concepts:
     st.info("Copia titolo concept:")
     st.session_state.selected_concept = st.text_input("Titolo Concept Scelto", value=st.session_state.selected_concept)
 
-# FASE 2
+# FASE 2: PRODUZIONE
 if st.session_state.selected_concept:
     st.header("Fase 2: Scheda Tecnica 🛠️")
     if st.button("Genera Materiali"):
         with st.spinner("Creazione asset..."):
             prompt = f"""
-            ESEGUI FASE 2 per: "{st.session_state.selected_concept}". Tema: {activity_input}.
+            ESEGUI FASE 2 per: "{st.session_state.selected_concept}". 
+            Tema Originale: {activity_input}. Vibe: {vibes_input}.
             Output: SCHEDA TECNICA COMPLETA.
             """
             response = call_ai(provider, selected_model, api_key, prompt)
@@ -233,13 +247,13 @@ if st.session_state.assets:
     with st.expander("📂 VEDI SCHEDA TECNICA", expanded=True):
         st.markdown(st.session_state.assets)
 
-# FASE 3
+# FASE 3: VENDITA
 if st.session_state.assets:
     st.header("Fase 3: Sales Pitch 💼")
     if st.button("Genera Slide"):
         with st.spinner("Creazione pitch..."):
             prompt = f"""
-            ESEGUI FASE 3 per: "{st.session_state.selected_concept}". Target: HR. Prezzo: {rrp}€.
+            ESEGUI FASE 3 per: "{st.session_state.selected_concept}". Target: HR. Prezzo: {rrp}€. Vibe: {vibes_input}.
             Crea testo per 6 Slide.
             """
             response = call_ai(provider, selected_model, api_key, prompt)
@@ -247,4 +261,4 @@ if st.session_state.assets:
             st.download_button("Scarica Slide (.txt)", data=response, file_name=f"Pitch_{st.session_state.selected_concept}.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v1.2 - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v1.3 - Powered by Teambuilding.it")
