@@ -7,7 +7,7 @@ import aiversion  # Il modulo versioni che abbiamo creato
 # --- 1. CONFIGURAZIONE PAGINA ---
 st.set_page_config(
     page_title="Timmy Wonka R&D",
-    page_icon="🦁",
+    page_icon="🦁",  # AGGIORNATO: Il Leone
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -162,7 +162,6 @@ st.divider()
 
 # --- SIDEBAR: PARAMETRI & VIBE ---
 with st.sidebar:
-    # MODIFICA APPLICATA QUI
     st.title("🆕 Nuovo Format")
     
     # 1. Vibe & Keywords
@@ -176,7 +175,7 @@ with st.sidebar:
 
     st.divider()
 
-    # 2. Budget Control (VERTICALE)
+    # 2. Budget Control
     st.subheader("2. Budget Control 💰")
     capex = st.number_input("Costo una tantum (€)", 2000, help="Spese fisse iniziali (es. attrezzatura)")
     opex = st.number_input("Costo materiali a persona (€)", 15, help="Spese variabili per ogni partecipante")
@@ -184,14 +183,20 @@ with st.sidebar:
 
     st.divider()
 
-    # 3. Logistica (MODIFICATA)
+    # 3. Logistica
     st.subheader("3. Logistica 📦")
     
     tech_level = st.select_slider("Livello Tech", ["Low Tech", "Hybrid", "High Tech"])
     
     phys_level = st.select_slider("Livello Fisico", ["Sedentario (Mental)", "Leggero (Movimento)", "Attivo (Sport)"])
     
-    location = st.selectbox("Location", ["Indoor", "Outdoor", "Durante i pasti (Dinner Game)", "Ibrido", "Remoto"])
+    # MODIFICA: Multiselect per Location
+    location_list = st.multiselect(
+        "Location (Scelta multipla)", 
+        ["Indoor", "Outdoor", "Durante i pasti (Dinner Game)", "Ibrido", "Remoto"],
+        default=["Indoor"],
+        help="Seleziona tutte le modalità applicabili"
+    )
 
 # --- CORPO PRINCIPALE ---
 st.title("🎩💡🎯 Timmy Wonka e la fabbrica dei Format 🏆🧠💰")
@@ -209,7 +214,9 @@ activity_input = st.text_input("Tema Base dell'Attività", placeholder="Es. Cena
 
 if st.button("Inventa 3 Concept", type="primary"):
     with st.spinner(f"Timmy ({selected_model}) sta elaborando con stile: {vibes_input}..."):
-        # PROMPT 
+        # Formattazione lista location per il prompt
+        loc_str = ", ".join(location_list) if location_list else "Qualsiasi/Non Specificato"
+        
         prompt = f"""
         ESEGUI FASE 1. 
         Tema Base: {activity_input}
@@ -223,7 +230,7 @@ if st.button("Inventa 3 Concept", type="primary"):
         Logistica: 
         - Tech Level: {tech_level}
         - Fisicità richiesta: {phys_level}
-        - Location: {location}
+        - Location (Setup supportati): {loc_str}
         
         Dammi 3 concept distinti che rispettino i vibe e la logistica indicata.
         """
@@ -267,4 +274,4 @@ if st.session_state.assets:
             st.download_button("Scarica Slide (.txt)", data=response, file_name=f"Pitch_{st.session_state.selected_concept}.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v1.7 - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v1.8 - Powered by Teambuilding.it")
