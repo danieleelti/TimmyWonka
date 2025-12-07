@@ -2,11 +2,11 @@ import streamlit as st
 import google.generativeai as genai
 from openai import OpenAI
 from anthropic import Anthropic
-import aiversion  # Importiamo il modulo per le versioni
+import aiversion  # Il modulo versioni che abbiamo creato
 
 # --- 1. CONFIGURAZIONE PAGINA ---
 st.set_page_config(
-    page_title="Timmy Wonka | R&D Lab",
+    page_title="Timmy Wonka R&D",
     page_icon="🎩",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -33,11 +33,13 @@ def check_password():
         st.error("⚠️ ERRORE: Password non configurata nei Secrets!")
         st.stop()
 
-    if st.session_state.password_input == secret_password:
-        st.session_state.authenticated = True
-        del st.session_state.password_input
-    else:
-        st.error("🚫 Password Errata.")
+    # Controlla se l'input esiste (per evitare errori al primo caricamento)
+    if "password_input" in st.session_state:
+        if st.session_state.password_input == secret_password:
+            st.session_state.authenticated = True
+            del st.session_state.password_input
+        else:
+            st.error("🚫 Password Errata.")
 
 if not st.session_state.authenticated:
     st.markdown("<br><br>", unsafe_allow_html=True)
@@ -45,7 +47,13 @@ if not st.session_state.authenticated:
     with col2:
         st.title("🔒 Timmy Wonka R&D")
         st.info("Inserisci la password per accedere.")
+        
+        # Campo Password
         st.text_input("Password", type="password", key="password_input", on_change=check_password)
+        
+        # Pulsante Entra (chiama la stessa funzione)
+        st.button("Entra 🔓", on_click=check_password)
+        
     st.stop()
 
 # ==============================================================================
@@ -165,9 +173,9 @@ with st.sidebar:
     st.title("🎛️ Parametri Format")
     
     # 1. Vibe & Keywords
-    st.subheader("1. Vibe & Keywords")
+    st.subheader("1. Vibe & Keywords 🎨")
     vibes_input = st.text_area(
-        "Parole chiave per lo stile", 
+        "Stile & Atmosfera", 
         placeholder="Es. Lusso, Adrenalinico, Sostenibile, Cyberpunk, Elegante, Competitivo...", 
         height=100,
         help="Aggettivi che definiscono l'atmosfera e lo stile del format."
@@ -176,7 +184,7 @@ with st.sidebar:
     st.divider()
 
     # 2. Budget Control (ETICHETTE IN ITALIANO)
-    st.subheader("2. Budget Control")
+    st.subheader("2. Budget Control 💰")
     col_b1, col_b2 = st.columns(2)
     with col_b1: 
         capex = st.number_input("Costo una tantum (€)", 2000, help="Spese fisse iniziali (es. attrezzatura)")
@@ -188,7 +196,7 @@ with st.sidebar:
     st.divider()
 
     # 3. Logistica
-    st.subheader("3. Logistica")
+    st.subheader("3. Logistica 📦")
     pax_range = st.slider("Partecipanti (Pax)", 10, 500, (30, 100))
     tech_level = st.select_slider("Livello Tech", ["Low Tech", "Hybrid", "High Tech"])
     location = st.selectbox("Location", ["Indoor", "Outdoor", "Ibrido", "Remoto"])
@@ -264,4 +272,4 @@ if st.session_state.assets:
             st.download_button("Scarica Slide (.txt)", data=response, file_name=f"Pitch_{st.session_state.selected_concept}.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v1.4 - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v1.5 - Powered by Teambuilding.it")
