@@ -60,8 +60,8 @@ IL TUO COMPITO:
 Sviluppare format di team building reali, scalabili e ad alto margine.
 
 REGOLE SUL BUDGET:
-- Rispetta RIGOROSAMENTE i limiti CAPEX (Investimenti Una Tantum) e OPEX (Costi variabili/pax).
-- Calcola sempre se il RRP (Prezzo vendita) copre i costi e garantisce margine.
+- Rispetta RIGOROSAMENTE i limiti di budget forniti (Costi fissi e variabili).
+- Calcola sempre se il prezzo di vendita copre i costi e garantisce margine.
 
 TONO:
 Creativo (Wonka) ma Logisticamente Spietato (Timmy).
@@ -118,7 +118,7 @@ def call_ai(provider, model_id, api_key, prompt):
 # INTERFACCIA UTENTE
 # ==============================================================================
 
-# --- SEZIONE SUPERIORE: SETUP AI (Spostato qui dalla Sidebar) ---
+# --- SEZIONE SUPERIORE: SETUP AI ---
 with st.expander("🧠 Configurazione Cervello AI & Versioni", expanded=True):
     col_ai1, col_ai2, col_ai3 = st.columns([1, 1, 2])
     
@@ -160,15 +160,11 @@ with st.expander("🧠 Configurazione Cervello AI & Versioni", expanded=True):
 
 st.divider()
 
-# --- SIDEBAR: PARAMETRI & VIBE (Riorganizzata) ---
+# --- SIDEBAR: PARAMETRI & VIBE ---
 with st.sidebar:
     st.title("🎛️ Parametri Format")
-    if st.button("Logout 🔒", key="logout_btn"):
-        st.session_state.authenticated = False
-        st.rerun()
-    st.divider()
-
-    # 1. Vibe & Keywords (NUOVO)
+    
+    # 1. Vibe & Keywords
     st.subheader("1. Vibe & Keywords")
     vibes_input = st.text_area(
         "Parole chiave per lo stile", 
@@ -179,12 +175,15 @@ with st.sidebar:
 
     st.divider()
 
-    # 2. Budget Control
+    # 2. Budget Control (ETICHETTE IN ITALIANO)
     st.subheader("2. Budget Control")
     col_b1, col_b2 = st.columns(2)
-    with col_b1: capex = st.number_input("CAPEX (€)", 2000, help="Investimento Una Tantum")
-    with col_b2: opex = st.number_input("OPEX (€/pax)", 15, help="Costo vivo a persona")
-    rrp = st.number_input("RRP Prezzo Vendita (€/pax)", 120)
+    with col_b1: 
+        capex = st.number_input("Costo una tantum (€)", 2000, help="Spese fisse iniziali (es. attrezzatura)")
+    with col_b2: 
+        opex = st.number_input("Costo materiali a persona (€)", 15, help="Spese variabili per ogni partecipante")
+    
+    rrp = st.number_input("Costo di vendita a persona (€)", 120, help="Prezzo al cliente finale")
 
     st.divider()
 
@@ -195,8 +194,8 @@ with st.sidebar:
     location = st.selectbox("Location", ["Indoor", "Outdoor", "Ibrido", "Remoto"])
 
 # --- CORPO PRINCIPALE ---
-st.title("🎩 Timmy Wonka e la fabbrica dei Format")
-st.caption(f"Using: {selected_model} | Budget: C:{capex}€ O:{opex}€")
+st.title("🎩💡🎯 Timmy Wonka e la fabbrica dei Format 🏆🧠💰")
+st.caption(f"Motore: {selected_model} | Costi Fissi: {capex}€ | Costi Variabili: {opex}€/pax")
 
 # Gestione Stato
 if "phase" not in st.session_state: st.session_state.phase = 1
@@ -216,8 +215,12 @@ if st.button("Inventa 3 Concept", type="primary"):
         Tema Base: {activity_input}
         VIBE/KEYWORDS RICHIESTE: {vibes_input if vibes_input else "Nessuna specifica (usa creatività standard)"}
 
-        Budget: CAPEX {capex}€, OPEX {opex}€/pax, RRP {rrp}€/pax.
-        Pax: {pax_range}, Tech: {tech_level}, Loc: {location}.
+        Budget: 
+        - Costo Una Tantum (CAPEX): {capex}€
+        - Costo Materiali a persona (OPEX): {opex}€/pax
+        - Prezzo Vendita Target: {rrp}€/pax
+        
+        Logistica: Pax: {pax_range}, Tech: {tech_level}, Loc: {location}.
         
         Dammi 3 concept distinti che rispettino i vibe indicati.
         """
@@ -261,4 +264,4 @@ if st.session_state.assets:
             st.download_button("Scarica Slide (.txt)", data=response, file_name=f"Pitch_{st.session_state.selected_concept}.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v1.3 - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v1.4 - Powered by Teambuilding.it")
