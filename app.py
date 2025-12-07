@@ -116,8 +116,8 @@ def call_ai(provider, model_id, api_key, prompt):
 # --- 4. SIDEBAR DINAMICA ---
 with st.sidebar:
     st.title("🏭 Fabbrica R&D")
-    st.markdown('<div class="success-box">✅ Login Staff</div>', unsafe_allow_html=True)
     
+    # Bottone Logout semplice
     if st.button("Logout 🔒"):
         st.session_state.authenticated = False
         st.rerun()
