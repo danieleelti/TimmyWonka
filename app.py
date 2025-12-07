@@ -1,33 +1,8 @@
 import streamlit as st
-import os
 import google.generativeai as genai
 from openai import OpenAI
 
-# --- 🔒 SISTEMA DI LOGIN CON SECRETS ---
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-
-def check_password():
-    """Verifica la password confrontandola con st.secrets."""
-    try:
-        # QUI È LA MODIFICA CHIAVE:
-        # Non scriviamo la password qui, ma chiediamo a Streamlit di leggerla dai segreti
-        correct_password = st.secrets["login_password"]
-    except FileNotFoundError:
-        st.error("⚠️ File .streamlit/secrets.toml non trovato (Locale) o Secrets non configurati (Cloud)!")
-        st.stop()
-    except KeyError:
-        st.error("⚠️ Chiave 'login_password' non trovata nei secrets!")
-        st.stop()
-
-    if st.session_state.password_input == correct_password:
-        st.session_state.authenticated = True
-        del st.session_state.password_input
-    else:
-        st.error("🚫 Password Errata. Riprova.")
-# --- 🔒 FINE SISTEMA DI LOGIN CON SECRETS ---
-
-# --- CONFIGURAZIONE PAGINA ---
+# --- 1. CONFIGURAZIONE PAGINA ---
 st.set_page_config(
     page_title="Timmy Wonka | R&D Lab",
     page_icon="🎩",
@@ -35,16 +10,61 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- STILI CSS CUSTOM ---
+# --- 2. STILI CSS (ESTETICA) ---
 st.markdown("""
 <style>
     .big-font { font-size:24px !important; font-weight: bold; color: #6C3483; }
-    .metric-card { background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #6C3483; }
-    .stAlert { border-radius: 10px; }
+    .stButton>button { width: 100%; border-radius: 5px; height: 3em; }
+    .success-box { padding: 10px; background-color: #d4edda; color: #155724; border-radius: 5px; margin-bottom: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- SYSTEM PROMPT (IL CERVELLO) ---
+# --- 3. GESTIONE SICUREZZA & LOGIN ---
+# Inizializza lo stato di autenticazione se non esiste
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+def check_password():
+    """Controlla la password confrontandola con i secrets."""
+    entered_password = st.session_state.password_input
+    
+    try:
+        # Tenta di recuperare la password vera dai secrets
+        secret_password = st.secrets["login_password"]
+    except (FileNotFoundError, KeyError):
+        st.error("⚠️ ERRORE CONFIGURAZIONE: File .streamlit/secrets.toml mancante o chiave 'login_password' non trovata.")
+        st.stop()
+
+    if entered_password == secret_password:
+        st.session_state.authenticated = True
+        del st.session_state.password_input # Pulizia sicurezza
+    else:
+        st.error("🚫 Password Errata. Riprova.")
+
+# LOGIC GATE: Se NON sei autenticato, mostra solo il login e FERMATI.
+if not st.session_state.authenticated:
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.title("🔒 Timmy Wonka R&D")
+        st.markdown("Area riservata al team di **Teambuilding.it**.")
+        st.info("Inserisci la password per accedere al laboratorio.")
+        
+        st.text_input(
+            "Password", 
+            type="password", 
+            key="password_input", 
+            on_change=check_password
+        )
+        st.markdown("*Accesso protetto via Streamlit Secrets*")
+    
+    st.stop() # <--- QUESTO È IL COMANDO FONDAMENTALE. BLOCCA TUTTO IL RESTO.
+
+# ==============================================================================
+# DA QUI IN POI IL CODICE VIENE ESEGUITO SOLO SE SEI LOGGATO
+# ==============================================================================
+
+# --- 4. IL CERVELLO DI TIMMY (SYSTEM PROMPT) ---
 SYSTEM_PROMPT = """
 SEI TIMMY WONKA, Direttore R&D di Teambuilding.it.
 Utenti: Team builder PRO (20+ anni exp). Non spiegare l'ovvio. Sii tecnico, creativo e orientato al business.
@@ -63,11 +83,9 @@ OUTPUT RICHIESTI:
 Segui le istruzioni dell'utente per FASE 1 (Concept), FASE 2 (Scheda Tecnica & Asset), FASE 3 (Slide Vendita).
 """
 
-# --- FUNZIONI CHIAMATA AI ---
+# --- 5. FUNZIONE CHIAMATA AI ---
 def call_ai(provider, api_key, model_name, prompt):
-    """Gestisce le chiamate ai diversi LLM"""
     full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}"
-    
     try:
         if provider == "Google Gemini":
             genai.configure(api_key=api_key)
@@ -79,46 +97,43 @@ def call_ai(provider, api_key, model_name, prompt):
             client = OpenAI(api_key=api_key)
             response = client.chat.completions.create(
                 model=model_name,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt}
-                ]
+                messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
             )
             return response.choices[0].message.content
 
         elif provider == "Groq":
-            # Groq usa client compatibile OpenAI
-            client = OpenAI(
-                base_url="https://api.groq.com/openai/v1",
-                api_key=api_key
-            )
+            client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=api_key)
             response = client.chat.completions.create(
                 model=model_name,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt}
-                ]
+                messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
             )
             return response.choices[0].message.content
             
         elif provider == "Grok (xAI)":
-            # Placeholder per integrazione futura o via client OpenAI compatibile
-            return "⚠️ Integrazione Grok xAI in arrivo. Seleziona un altro modello per ora."
+            return "⚠️ Integrazione Grok xAI in arrivo. Usa un altro modello."
 
     except Exception as e:
         return f"❌ ERRORE API: {str(e)}"
 
-# --- SIDEBAR: SETTAGGI & BUDGET ---
+# --- 6. SIDEBAR (CONFIGURAZIONE) ---
 with st.sidebar:
     st.title("🏭 Fabbrica R&D")
+    st.markdown('<div class="success-box">✅ Login Effettuato</div>', unsafe_allow_html=True)
     
-    # 1. SETUP AI
-    st.header("1. Intelligenza")
-    provider = st.selectbox("Scegli Provider", ["Google Gemini", "OpenAI / GPT", "Groq", "Grok (xAI)"])
+    # Logout Button
+    if st.button("Logout 🔒"):
+        st.session_state.authenticated = False
+        st.rerun() # Ricarica la pagina per mostrare il login
+
+    st.divider()
+
+    # Setup AI
+    st.subheader("1. Intelligenza")
+    provider = st.selectbox("Provider", ["Google Gemini", "OpenAI / GPT", "Groq", "Grok (xAI)"])
+    api_key = st.text_input("API Key", type="password")
     
-    api_key = st.text_input("API Key", type="password", help="Inserisci la chiave API per il servizio scelto")
-    
-    model_name = "gemini-1.5-pro-latest" # Default
+    # Selezione Modello
+    model_name = "gemini-1.5-pro-latest"
     if provider == "Google Gemini":
         model_name = st.selectbox("Modello", ["gemini-1.5-pro-latest", "gemini-1.5-flash"])
     elif provider == "OpenAI / GPT":
@@ -128,45 +143,40 @@ with st.sidebar:
 
     st.divider()
 
-    # 2. BUDGET CONTROL
-    st.header("2. Budget Control")
+    # Budget Control
+    st.subheader("2. Budget Control")
     col_b1, col_b2 = st.columns(2)
     with col_b1:
-        capex = st.number_input("CAPEX (€)", value=2000, help="Budget Una Tantum (Attrezzature)")
+        capex = st.number_input("CAPEX (€)", value=2000, help="Investimento Una Tantum")
     with col_b2:
-        opex = st.number_input("OPEX (€/pax)", value=15, help="Costo variabile a persona")
-    
-    rrp = st.number_input("Prezzo Vendita (€/pax)", value=120, help="Target Price al cliente")
+        opex = st.number_input("OPEX (€/pax)", value=15, help="Costo vivo a persona")
+    rrp = st.number_input("Prezzo Vendita (€/pax)", value=120)
 
     st.divider()
 
-    # 3. PARAMETRI EVENTO
-    st.header("3. Parametri")
+    # Parametri Evento
+    st.subheader("3. Parametri")
     pax_range = st.slider("Partecipanti", 10, 500, (30, 100))
-    tech_level = st.select_slider("Livello Tech", options=["Low Tech (Analogico)", "Hybrid", "High Tech (VR/AI/App)"])
-    location = st.selectbox("Location", ["Indoor (Ufficio/Hotel)", "Outdoor", "Ibrido", "Remoto"])
+    tech_level = st.select_slider("Tech Level", options=["Low Tech", "Hybrid", "High Tech"])
+    location = st.selectbox("Location", ["Indoor", "Outdoor", "Ibrido", "Remoto"])
 
-# --- HEADER PRINCIPALE ---
+# --- 7. CORPO PRINCIPALE APP ---
 st.title("🎩 Timmy Wonka: Generatore di Format")
-st.markdown(f"**Status:** Pronti a inventare. | **Budget:** CAPEX €{capex} - OPEX €{opex}/pax | **Target:** €{rrp}/pax")
+st.markdown(f"**Status:** Attivo | **Target:** Vendita a €{rrp}/pax | **Budget:** CAPEX €{capex} / OPEX €{opex}")
 
-# --- GESTIONE STATO ---
-if "phase" not in st.session_state:
-    st.session_state.phase = 1
-if "concepts" not in st.session_state:
-    st.session_state.concepts = ""
-if "selected_concept" not in st.session_state:
-    st.session_state.selected_concept = ""
-if "assets" not in st.session_state:
-    st.session_state.assets = ""
+# Gestione Fasi (Session State)
+if "phase" not in st.session_state: st.session_state.phase = 1
+if "concepts" not in st.session_state: st.session_state.concepts = ""
+if "selected_concept" not in st.session_state: st.session_state.selected_concept = ""
+if "assets" not in st.session_state: st.session_state.assets = ""
 
 # --- FASE 1: IDEAZIONE ---
 st.header("Fase 1: Ideazione Concept 💡")
-activity_input = st.text_input("Su cosa lavoriamo oggi?", placeholder="Es. Gara di cucina, Investigazione, Pittura, Canto, Costruzione zattere...")
+activity_input = st.text_input("Su cosa lavoriamo oggi?", placeholder="Es. Cena con delitto, Gara droni, Pittura collaborativa...")
 
 if st.button("Inventa 3 Concept", type="primary"):
     if not api_key:
-        st.error("Inserisci una API Key nella sidebar!")
+        st.warning("⚠️ Inserisci la API Key nella sidebar prima di procedere!")
     else:
         with st.spinner("Timmy sta mescolando gli ingredienti..."):
             prompt_f1 = f"""
@@ -174,81 +184,59 @@ if st.button("Inventa 3 Concept", type="primary"):
             Tema: {activity_input}
             Budget CAPEX: {capex}€ | OPEX: {opex}€/pax | RRP: {rrp}€/pax
             Pax: {pax_range} | Tech: {tech_level} | Location: {location}
-            
-            Dammi 3 concept distinti. Per ognuno includi Titolo, Hook, Loop (Meccanica) e breve check fattibilità economica.
+            Dammi 3 concept distinti con Titolo, Hook, Meccanica e Fattibilità.
             """
             response = call_ai(provider, api_key, model_name, prompt_f1)
             st.session_state.concepts = response
             st.session_state.phase = 1
 
 if st.session_state.concepts:
-    st.markdown("### 📝 I Concept di Timmy")
+    st.markdown("### 📝 I Concept Proposti")
     st.markdown(st.session_state.concepts)
-    
     st.divider()
-    st.info("Copia il TITOLO del concept che preferisci qui sotto per passare alla produzione.")
-    st.session_state.selected_concept = st.text_input("Inserisci il Titolo del Concept Scelto", value=st.session_state.selected_concept)
+    st.info("Copia il TITOLO del concept migliore qui sotto:")
+    st.session_state.selected_concept = st.text_input("Titolo Concept Scelto", value=st.session_state.selected_concept)
 
-# --- FASE 2: PRODUZIONE ASSET ---
+# --- FASE 2: PRODUZIONE ---
 if st.session_state.selected_concept:
     st.header("Fase 2: Produzione Asset & Scheda Tecnica 🛠️")
-    st.write(f"Stai lavorando su: **{st.session_state.selected_concept}**")
-    
-    col_prod1, col_prod2 = st.columns([1,3])
-    with col_prod1:
-        st.markdown("**Cosa generare?**")
-        gen_plot = st.checkbox("Trama/Regole/Meccanica", value=True)
-        gen_lists = st.checkbox("Liste Spesa (CAPEX/OPEX)", value=True)
-        gen_staff = st.checkbox("Brief Staff", value=True)
-        gen_visuals = st.checkbox("Prompt per Immagini", value=True)
+    st.write(f"Progetto attivo: **{st.session_state.selected_concept}**")
     
     if st.button("Genera Materiali di Gioco"):
         if not api_key:
-            st.error("API Key mancante")
+            st.warning("⚠️ Manca la API Key")
         else:
-            with st.spinner("Timmy sta costruendo il prototipo..."):
+            with st.spinner("Creazione prototipo in corso..."):
                 prompt_f2 = f"""
-                ESEGUI FASE 2 per il concept: "{st.session_state.selected_concept}".
-                Considera il tema originale: {activity_input}.
-                
-                Genera UNA SCHEDA TECNICA APPROFONDITA.
-                1. Trama/Lore e Regole del gioco (The Loop).
-                2. Lista della Spesa CAPEX (massimizza il budget di {capex}€).
-                3. Lista Consumabili OPEX (max {opex}€/pax).
-                4. Staffing Plan.
-                5. ASSET SPECIFICI: Se investigativo (indizi, profili), se cucina (ricette strane), etc.
-                6. PROMPT VISIVI: Scrivi 3 prompt precisi per generare immagini (Mappa, Logo, Oggetto chiave) con Midjourney/Dall-E.
+                ESEGUI FASE 2 per: "{st.session_state.selected_concept}".
+                Tema Base: {activity_input}.
+                Output: SCHEDA TECNICA (Trama/Regole, Lista Spesa CAPEX {capex}€, Lista OPEX {opex}€, Staff, Asset Narrativi, 3 Prompt Visivi).
                 """
                 response_f2 = call_ai(provider, api_key, model_name, prompt_f2)
                 st.session_state.assets = response_f2
                 st.session_state.phase = 2
 
 if st.session_state.assets:
-    with st.expander("📂 VEDI SCHEDA TECNICA E ASSET (Clicca per espandere)", expanded=True):
+    with st.expander("📂 VEDI SCHEDA TECNICA (Clicca per aprire)", expanded=True):
         st.markdown(st.session_state.assets)
 
 # --- FASE 3: VENDITA ---
-if st.session_state.phase >= 2:
+if st.session_state.phase >= 2 and st.session_state.assets:
     st.header("Fase 3: Sales Pitch 💼")
-    st.write("Il prodotto è pronto. Ora vendiamolo.")
-    
-    if st.button("Genera Testi Slide Presentazione"):
-         with st.spinner("Timmy si sta mettendo la cravatta..."):
-            prompt_f3 = f"""
-            ESEGUI FASE 3 per il concept: "{st.session_state.selected_concept}".
-            
-            Crea il contenuto testuale per 6 Slide di Vendita.
-            Target: HR Director / CEO.
-            Prezzo proposto: {rrp}€ a persona.
-            Focus: ROI Formativo, Innovazione, Divertimento Intelligente.
-            """
-            response_f3 = call_ai(provider, api_key, model_name, prompt_f3)
-            st.markdown("### 📊 Contenuto Slide Deck")
-            st.markdown(response_f3)
-            
-            # Export button fake (per ora)
-            st.download_button("Scarica Slide (.txt)", data=response_f3, file_name=f"Pitch_{st.session_state.selected_concept}.txt")
+    if st.button("Genera Slide Deck"):
+        if not api_key:
+             st.warning("⚠️ Manca la API Key")
+        else:
+            with st.spinner("Preparazione pitch commerciale..."):
+                prompt_f3 = f"""
+                ESEGUI FASE 3 per: "{st.session_state.selected_concept}".
+                Target: HR Director. Prezzo: {rrp}€ pax.
+                Crea testo per 6 Slide (Titolo, Problema, Soluzione, Timeline, Benefit, Prezzo).
+                """
+                response_f3 = call_ai(provider, api_key, model_name, prompt_f3)
+                st.markdown("### 📊 Pitch Commerciale")
+                st.markdown(response_f3)
+                st.download_button("Scarica Slide (.txt)", data=response_f3, file_name=f"Pitch_{st.session_state.selected_concept}.txt")
 
-# --- FOOTER ---
 st.markdown("---")
-st.markdown("*Timmy Wonka AI Internal Tool - v1.0 - Powered by Teambuilding.it*")
+st.caption("Timmy Wonka v1.0 - Teambuilding.it Internal Tool")
