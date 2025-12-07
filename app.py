@@ -1,50 +1,230 @@
 import streamlit as st
-# Importazioni librerie AI (pseudo-codice)
-# from langchain / openai / google.generativeai ...
+import os
+import google.generativeai as genai
+from openai import OpenAI
 
 # --- CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="Timmy Wonka R&D", layout="wide")
+st.set_page_config(
+    page_title="Timmy Wonka | R&D Lab",
+    page_icon="🎩",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- SIDEBAR: I PARAMETRI ---
-st.sidebar.title("🏭 Fabbrica delle Idee")
+# --- STILI CSS CUSTOM ---
+st.markdown("""
+<style>
+    .big-font { font-size:24px !important; font-weight: bold; color: #6C3483; }
+    .metric-card { background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #6C3483; }
+    .stAlert { border-radius: 10px; }
+</style>
+""", unsafe_allow_html=True)
 
-# Selettore AI
-selected_model = st.sidebar.selectbox("Scegli il Cervello", ["Gemini 1.5 Pro", "GPT-4o", "Groq (Llama3)", "Claude 3.5"])
+# --- SYSTEM PROMPT (IL CERVELLO) ---
+SYSTEM_PROMPT = """
+SEI TIMMY WONKA, Direttore R&D di Teambuilding.it.
+Utenti: Team builder PRO (20+ anni exp). Non spiegare l'ovvio. Sii tecnico, creativo e orientato al business.
 
-# Input Generali
-activity_type = st.sidebar.text_input("Tipologia Attività", "Es. Gara di Cucina Molecolare")
-target_pax = st.sidebar.slider("Numero Partecipanti", 10, 500, 50)
+IL TUO COMPITO:
+Sviluppare format di team building reali, scalabili e ad alto margine.
 
-# Input Budget (Divisi come richiesto)
-st.sidebar.markdown("### 💰 Budget Control")
-capex = st.sidebar.number_input("Budget CAPEX (Una Tantum - €)", value=1000)
-opex = st.sidebar.number_input("Budget OPEX (Consumabili/pax - €)", value=20)
-rrp = st.sidebar.number_input("Prezzo Vendita Target (a pax - €)", value=120)
+REGOLE SUL BUDGET:
+- Rispetta RIGOROSAMENTE i limiti CAPEX (Investimenti Una Tantum) e OPEX (Costi variabili/pax).
+- Calcola sempre se il RRP (Prezzo vendita) copre i costi e garantisce margine.
 
-# --- CORPO PRINCIPALE ---
-st.title("🎩 Timmy Wonka: L'Inventore di Format")
+TONO:
+Creativo (Wonka) ma Logisticamente Spietato (Timmy).
 
-# Gestione dello stato (Fase 1, 2, 3)
+OUTPUT RICHIESTI:
+Segui le istruzioni dell'utente per FASE 1 (Concept), FASE 2 (Scheda Tecnica & Asset), FASE 3 (Slide Vendita).
+"""
+
+# --- FUNZIONI CHIAMATA AI ---
+def call_ai(provider, api_key, model_name, prompt):
+    """Gestisce le chiamate ai diversi LLM"""
+    full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}"
+    
+    try:
+        if provider == "Google Gemini":
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(full_prompt)
+            return response.text
+
+        elif provider == "OpenAI / GPT":
+            client = OpenAI(api_key=api_key)
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return response.choices[0].message.content
+
+        elif provider == "Groq":
+            # Groq usa client compatibile OpenAI
+            client = OpenAI(
+                base_url="https://api.groq.com/openai/v1",
+                api_key=api_key
+            )
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return response.choices[0].message.content
+            
+        elif provider == "Grok (xAI)":
+            # Placeholder per integrazione futura o via client OpenAI compatibile
+            return "⚠️ Integrazione Grok xAI in arrivo. Seleziona un altro modello per ora."
+
+    except Exception as e:
+        return f"❌ ERRORE API: {str(e)}"
+
+# --- SIDEBAR: SETTAGGI & BUDGET ---
+with st.sidebar:
+    st.title("🏭 Fabbrica R&D")
+    
+    # 1. SETUP AI
+    st.header("1. Intelligenza")
+    provider = st.selectbox("Scegli Provider", ["Google Gemini", "OpenAI / GPT", "Groq", "Grok (xAI)"])
+    
+    api_key = st.text_input("API Key", type="password", help="Inserisci la chiave API per il servizio scelto")
+    
+    model_name = "gemini-1.5-pro-latest" # Default
+    if provider == "Google Gemini":
+        model_name = st.selectbox("Modello", ["gemini-1.5-pro-latest", "gemini-1.5-flash"])
+    elif provider == "OpenAI / GPT":
+        model_name = st.selectbox("Modello", ["gpt-4o", "gpt-4-turbo"])
+    elif provider == "Groq":
+        model_name = st.selectbox("Modello", ["llama3-70b-8192", "mixtral-8x7b-32768"])
+
+    st.divider()
+
+    # 2. BUDGET CONTROL
+    st.header("2. Budget Control")
+    col_b1, col_b2 = st.columns(2)
+    with col_b1:
+        capex = st.number_input("CAPEX (€)", value=2000, help="Budget Una Tantum (Attrezzature)")
+    with col_b2:
+        opex = st.number_input("OPEX (€/pax)", value=15, help="Costo variabile a persona")
+    
+    rrp = st.number_input("Prezzo Vendita (€/pax)", value=120, help="Target Price al cliente")
+
+    st.divider()
+
+    # 3. PARAMETRI EVENTO
+    st.header("3. Parametri")
+    pax_range = st.slider("Partecipanti", 10, 500, (30, 100))
+    tech_level = st.select_slider("Livello Tech", options=["Low Tech (Analogico)", "Hybrid", "High Tech (VR/AI/App)"])
+    location = st.selectbox("Location", ["Indoor (Ufficio/Hotel)", "Outdoor", "Ibrido", "Remoto"])
+
+# --- HEADER PRINCIPALE ---
+st.title("🎩 Timmy Wonka: Generatore di Format")
+st.markdown(f"**Status:** Pronti a inventare. | **Budget:** CAPEX €{capex} - OPEX €{opex}/pax | **Target:** €{rrp}/pax")
+
+# --- GESTIONE STATO ---
 if "phase" not in st.session_state:
     st.session_state.phase = 1
+if "concepts" not in st.session_state:
+    st.session_state.concepts = ""
+if "selected_concept" not in st.session_state:
+    st.session_state.selected_concept = ""
+if "assets" not in st.session_state:
+    st.session_state.assets = ""
 
-# FASE 1: IDEAZIONE
-if st.session_state.phase == 1:
-    if st.button("Inventa 3 Concept"):
-        # Qui chiamiamo l'AI con il SYSTEM PROMPT + i parametri + "ESEGUI FASE 1"
-        # Mostriamo i 3 risultati
-        pass
+# --- FASE 1: IDEAZIONE ---
+st.header("Fase 1: Ideazione Concept 💡")
+activity_input = st.text_input("Su cosa lavoriamo oggi?", placeholder="Es. Gara di cucina, Investigazione, Pittura, Canto, Costruzione zattere...")
 
-# FASE 2: PRODUZIONE ASSET
-if st.session_state.phase == 2:
-    st.write(f"Hai scelto il concept: {st.session_state.selected_concept}")
-    if st.button("Genera Materiali e Scheda Tecnica"):
-        # Chiamata AI: "ESEGUI FASE 2 sul concept scelto"
-        # Output lungo: Trama, Liste spesa, Regole...
-        pass
+if st.button("Inventa 3 Concept", type="primary"):
+    if not api_key:
+        st.error("Inserisci una API Key nella sidebar!")
+    else:
+        with st.spinner("Timmy sta mescolando gli ingredienti..."):
+            prompt_f1 = f"""
+            ESEGUI FASE 1.
+            Tema: {activity_input}
+            Budget CAPEX: {capex}€ | OPEX: {opex}€/pax | RRP: {rrp}€/pax
+            Pax: {pax_range} | Tech: {tech_level} | Location: {location}
+            
+            Dammi 3 concept distinti. Per ognuno includi Titolo, Hook, Loop (Meccanica) e breve check fattibilità economica.
+            """
+            response = call_ai(provider, api_key, model_name, prompt_f1)
+            st.session_state.concepts = response
+            st.session_state.phase = 1
 
-# FASE 3: PRESENTAZIONE
-if st.session_state.phase == 3:
-    if st.button("Crea Slide Deck"):
-        # Chiamata AI: "ESEGUI FASE 3"
-        pass
+if st.session_state.concepts:
+    st.markdown("### 📝 I Concept di Timmy")
+    st.markdown(st.session_state.concepts)
+    
+    st.divider()
+    st.info("Copia il TITOLO del concept che preferisci qui sotto per passare alla produzione.")
+    st.session_state.selected_concept = st.text_input("Inserisci il Titolo del Concept Scelto", value=st.session_state.selected_concept)
+
+# --- FASE 2: PRODUZIONE ASSET ---
+if st.session_state.selected_concept:
+    st.header("Fase 2: Produzione Asset & Scheda Tecnica 🛠️")
+    st.write(f"Stai lavorando su: **{st.session_state.selected_concept}**")
+    
+    col_prod1, col_prod2 = st.columns([1,3])
+    with col_prod1:
+        st.markdown("**Cosa generare?**")
+        gen_plot = st.checkbox("Trama/Regole/Meccanica", value=True)
+        gen_lists = st.checkbox("Liste Spesa (CAPEX/OPEX)", value=True)
+        gen_staff = st.checkbox("Brief Staff", value=True)
+        gen_visuals = st.checkbox("Prompt per Immagini", value=True)
+    
+    if st.button("Genera Materiali di Gioco"):
+        if not api_key:
+            st.error("API Key mancante")
+        else:
+            with st.spinner("Timmy sta costruendo il prototipo..."):
+                prompt_f2 = f"""
+                ESEGUI FASE 2 per il concept: "{st.session_state.selected_concept}".
+                Considera il tema originale: {activity_input}.
+                
+                Genera UNA SCHEDA TECNICA APPROFONDITA.
+                1. Trama/Lore e Regole del gioco (The Loop).
+                2. Lista della Spesa CAPEX (massimizza il budget di {capex}€).
+                3. Lista Consumabili OPEX (max {opex}€/pax).
+                4. Staffing Plan.
+                5. ASSET SPECIFICI: Se investigativo (indizi, profili), se cucina (ricette strane), etc.
+                6. PROMPT VISIVI: Scrivi 3 prompt precisi per generare immagini (Mappa, Logo, Oggetto chiave) con Midjourney/Dall-E.
+                """
+                response_f2 = call_ai(provider, api_key, model_name, prompt_f2)
+                st.session_state.assets = response_f2
+                st.session_state.phase = 2
+
+if st.session_state.assets:
+    with st.expander("📂 VEDI SCHEDA TECNICA E ASSET (Clicca per espandere)", expanded=True):
+        st.markdown(st.session_state.assets)
+
+# --- FASE 3: VENDITA ---
+if st.session_state.phase >= 2:
+    st.header("Fase 3: Sales Pitch 💼")
+    st.write("Il prodotto è pronto. Ora vendiamolo.")
+    
+    if st.button("Genera Testi Slide Presentazione"):
+         with st.spinner("Timmy si sta mettendo la cravatta..."):
+            prompt_f3 = f"""
+            ESEGUI FASE 3 per il concept: "{st.session_state.selected_concept}".
+            
+            Crea il contenuto testuale per 6 Slide di Vendita.
+            Target: HR Director / CEO.
+            Prezzo proposto: {rrp}€ a persona.
+            Focus: ROI Formativo, Innovazione, Divertimento Intelligente.
+            """
+            response_f3 = call_ai(provider, api_key, model_name, prompt_f3)
+            st.markdown("### 📊 Contenuto Slide Deck")
+            st.markdown(response_f3)
+            
+            # Export button fake (per ora)
+            st.download_button("Scarica Slide (.txt)", data=response_f3, file_name=f"Pitch_{st.session_state.selected_concept}.txt")
+
+# --- FOOTER ---
+st.markdown("---")
+st.markdown("*Timmy Wonka AI Internal Tool - v1.0 - Powered by Teambuilding.it*")
