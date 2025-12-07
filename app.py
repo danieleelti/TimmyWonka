@@ -3,6 +3,30 @@ import os
 import google.generativeai as genai
 from openai import OpenAI
 
+# --- 🔒 SISTEMA DI LOGIN CON SECRETS ---
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+def check_password():
+    """Verifica la password confrontandola con st.secrets."""
+    try:
+        # QUI È LA MODIFICA CHIAVE:
+        # Non scriviamo la password qui, ma chiediamo a Streamlit di leggerla dai segreti
+        correct_password = st.secrets["login_password"]
+    except FileNotFoundError:
+        st.error("⚠️ File .streamlit/secrets.toml non trovato (Locale) o Secrets non configurati (Cloud)!")
+        st.stop()
+    except KeyError:
+        st.error("⚠️ Chiave 'login_password' non trovata nei secrets!")
+        st.stop()
+
+    if st.session_state.password_input == correct_password:
+        st.session_state.authenticated = True
+        del st.session_state.password_input
+    else:
+        st.error("🚫 Password Errata. Riprova.")
+# --- 🔒 FINE SISTEMA DI LOGIN CON SECRETS ---
+
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(
     page_title="Timmy Wonka | R&D Lab",
