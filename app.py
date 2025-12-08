@@ -8,7 +8,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import json
 import re
-# RIGA RIMOSSA: from streamlit_extras.copy_to_clipboard import copy_to_clipboard 
+# RIMOZIONE DEFINITIVA DELLA LIBRERIA STREAMLIT_EXTRAS
 
 # --- FUNZIONE HELPER PER IL NOME DEL FILE ---
 def sanitize_filename(title):
@@ -22,7 +22,7 @@ CATALOG_SHEET_TITLE = "CatalogoCompleto"
 def get_db_connection(worksheet_index=0):
     """Restituisce la connessione a una specifica scheda."""
     try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        scope = ["[https://spreadsheets.google.com/feeds](https://spreadsheets.google.com/feeds)", "[https://www.googleapis.com/auth/drive](https://www.googleapis.com/auth/drive)"]
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
             if "\\n" in creds_dict["private_key"]:
@@ -143,9 +143,22 @@ IMPORTANTE: Non usare mai acronimi tecnici (Capex/Opex) nelle risposte. Usa "Cos
 
 def clean_json_text(text):
     text = text.strip()
+    
+    # 1. Gestione Fences Markdown (esistente)
     if text.startswith("```"):
         text = re.sub(r"^```(json)?", "", text)
         text = re.sub(r"```$", "", text)
+        text = text.strip()
+        
+    # 2. Gestione Delimitatori Custom (NUOVO per Claude)
+    start_tag = "###OUTPUT_JSON_START###"
+    end_tag = "###OUTPUT_JSON_END###"
+    
+    if start_tag in text and end_tag in text:
+        start_index = text.find(start_tag) + len(start_tag)
+        end_index = text.find(end_tag)
+        text = text[start_index:end_index].strip()
+        
     return text.strip()
 
 
@@ -160,7 +173,13 @@ def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
     messages.append({"role": "user", "content": prompt})
     
     if json_mode:
-        messages[-1]["content"] += "\nRISPONDI SOLO CON UN ARRAY JSON VALIDO: [{{'titolo':'...', 'descrizione':'...'}}]. Niente testo extra."
+        # ISTRUZIONE RAFFORZATA con delimitatori custom
+        json_instruction = """
+        RISPONDI ESCLUSIVAMENTE CON UN ARRAY JSON VALIDO con esattamente 2 oggetti. 
+        IL TUO OUTPUT DEVE ESSERE RACCHIUSO ESATTAMENTE TRA I DELIMITATORI: ###OUTPUT_JSON_START### e ###OUTPUT_JSON_END###.
+        Non includere testo introduttivo, commenti, o delimitatori di codice (```json) all'esterno.
+        """
+        messages[-1]["content"] += "\n" + json_instruction
 
 
     try:
