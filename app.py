@@ -12,7 +12,7 @@ import re
 # --- 0. GESTIONE DATABASE (GOOGLE SHEETS) ---
 SHEET_NAME = "TimmyWonka_DB"
 CATALOG_SHEET_TITLE = "CatalogoCompleto" 
-# ... (Funzioni di DB restano invariate, ma load_catalog_titles non viene usata in FASE 1) ...
+
 def get_db_connection(worksheet_index=0):
     """Restituisce la connessione a una specifica scheda."""
     try:
@@ -144,7 +144,12 @@ def clean_json_text(text):
 
 def call_ai(provider, model_id, api_key, prompt, json_mode=False):
     if json_mode:
-        full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}\n\nRISPONDI SOLO CON UN ARRAY JSON VALIDO: [{{...}}, {{...}}]. Niente testo extra."
+        # ISTRUZIONE JSON RAFFORZATA per garantire descrizione e chiavi
+        json_instruction = """
+        RISPONDI SOLO CON UN ARRAY JSON VALIDO con esattamente 2 oggetti. 
+        Ogni oggetto DEVE contenere due chiavi: 'titolo' (stringa breve) e 'descrizione' (stringa lunga, ALMENO 5 frasi di dettaglio sul format). Niente testo extra.
+        """
+        full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}\n\n{json_instruction}"
     else:
         full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}"
         
@@ -292,10 +297,6 @@ activity_input = st.text_area("Tema Base", placeholder="Es. Robot Wars, La cacci
 if st.button("✨ Inventa 2 Idee", type="primary"):
     with st.spinner("Brainstorming..."):
         
-        # Rimosso il caricamento del catalogo per ridurre il carico sul prompt e prevenire timeout
-        # catalog_list = load_catalog_titles()
-        # catalog_prompt = "\n".join(catalog_list)
-        
         budget_str = "Libero" if (capex+opex+rrp)==0 else f"Fissi {capex}€, Var {opex}€, Vendita {rrp}€"
         
         prompt = f"""
@@ -331,10 +332,9 @@ if st.session_state.concepts_list:
                 st.success(f"Selezionato: {concept_title}")
             
             if c2.button("💾 Salva per dopo", key=f"save_{idx}"):
-                # Nota: Il controllo duplicati contro il Catalogo Completo è ora disabilitato. Salva l'idea senza controllo avanzato.
                 res = save_to_gsheet(concept_title, activity_input, vibes_input, f"{provider}", str(concept))
                 if res: st.toast(f"✅ Salvato: {concept_title}")
-                else: st.toast("⚠️ Già nel DB (solo archivio idee)")
+                else: st.toast("⚠️ Già nel DB")
 
             if c3.button("🔄 Rigenera (Boccia)", key=f"regen_{idx}"):
                 with st.spinner(f"Rimpiazzo l'idea {idx+1}..."):
@@ -379,4 +379,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.20 (Context Optimization) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.21 (JSON Detail Enforcement) - Powered by Teambuilding.it")
