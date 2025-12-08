@@ -137,7 +137,7 @@ if not st.session_state.authenticated:
 
 SYSTEM_PROMPT = """
 SEI TIMMY WONKA, Direttore R&D di Teambuilding.it.
-Obiettivo: Sviluppare Format di team building divertenti, basati sul gioco (gamification e ludico), reali, scalabili e ad alto margine.
+Obiettivo: Format di team building reali, scalabili e ad alto margine.
 IMPORTANTE: Non usare mai acronimi tecnici (Capex/Opex) nelle risposte. Usa "Costi Fissi", "Costi Variabili".
 """
 
@@ -189,9 +189,11 @@ def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
             if not response.candidates:
                 if hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
                     block_reason = response.prompt_feedback.block_reason.name
+                    # Restituisce un errore gestito invece di crashare
                     return f"❌ CONTENUTO BLOCCATO DA GEMINI. Motivo: Il prompt o l'output hanno violato le policy di sicurezza di Google (Motivo: {block_reason}). Riprova con un prompt meno sensibile."
                 else:
                     return "❌ ERRORE GEMINI SCONOSCIUTO: Nessun candidato restituito."
+            # Fine Fix
             
             text_response = response.text
         
