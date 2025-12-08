@@ -8,7 +8,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import json
 import re
-from streamlit_extras.copy_to_clipboard import copy_to_clipboard 
+# RIMOZIONE DEFINITIVA DELLA LIBRERIA STREAMLIT_EXTRAS
 
 # --- FUNZIONE HELPER PER IL NOME DEL FILE ---
 def sanitize_filename(title):
@@ -58,7 +58,7 @@ def load_catalog_titles():
         return []
     except Exception as e:
         print(f"Errore caricamento Catalogo: {e}")
-        return []
+        return None
 
 
 def save_to_gsheet(title, description, vibe, author, full_concept):
@@ -137,7 +137,7 @@ if not st.session_state.authenticated:
 
 SYSTEM_PROMPT = """
 SEI TIMMY WONKA, Direttore R&D di Teambuilding.it.
-Obiettivo: Format di team building reali, scalabili e ad alto margine.
+Obiettivo: Sviluppare Format di team building divertenti, basati sul gioco (gamification e ludico), reali, scalabili e ad alto margine.
 IMPORTANTE: Non usare mai acronimi tecnici (Capex/Opex) nelle risposte. Usa "Costi Fissi", "Costi Variabili".
 """
 
@@ -185,15 +185,12 @@ def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
             final_prompt = "\n".join([f"[{m['role'].upper()}]: {m['content']}" for m in messages[1:]])
             response = model.generate_content(final_prompt)
             
-            # --- FIX ERRORE GEMINI (SAFETY BLOCK) ---
             if not response.candidates:
                 if hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
                     block_reason = response.prompt_feedback.block_reason.name
-                    # Restituisce un errore gestito invece di crashare
                     return f"❌ CONTENUTO BLOCCATO DA GEMINI. Motivo: Il prompt o l'output hanno violato le policy di sicurezza di Google (Motivo: {block_reason}). Riprova con un prompt meno sensibile."
                 else:
                     return "❌ ERRORE GEMINI SCONOSCIUTO: Nessun candidato restituito."
-            # Fine Fix
             
             text_response = response.text
         
@@ -494,7 +491,7 @@ if st.session_state.selected_concept:
             if res: st.success(f"✅ Versione finale di '{final_title}' salvata nel DB!")
             else: st.error("⚠️ Errore nel salvataggio o idea già presente.")
             
-        # Pulsante Download Nativo (Sostituisce il componente esterno)
+        # Pulsante Download Nativo (Funziona senza librerie esterne)
         file_name = f"{sanitize_filename(st.session_state.selected_concept)}_Final.txt"
         col_copy.download_button(
             label="⬇️ Scarica Ultimo Asset (.txt)", 
@@ -519,4 +516,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, file_name_pitch)
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.30 (Gemini Safety Block Fix) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.31 (Definitive Module Fix) - Powered by Teambuilding.it")
