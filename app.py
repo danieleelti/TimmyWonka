@@ -12,7 +12,7 @@ import re
 # --- 0. GESTIONE DATABASE (GOOGLE SHEETS) ---
 SHEET_NAME = "TimmyWonka_DB"
 CATALOG_SHEET_TITLE = "CatalogoCompleto" 
-
+# ... (Funzioni di DB restano invariate, ma load_catalog_titles non viene usata in FASE 1) ...
 def get_db_connection(worksheet_index=0):
     """Restituisce la connessione a una specifica scheda."""
     try:
@@ -168,7 +168,6 @@ def call_ai(provider, model_id, api_key, prompt, json_mode=False):
             )
             text_response = message.content[0].text
         elif provider == "Groq":
-            # Groq uses the OpenAI SDK format with a custom base_url
             client = OpenAI(base_url="[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)", api_key=api_key)
             response = client.chat.completions.create(
                 model=model_id, messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": full_prompt}]
@@ -249,7 +248,6 @@ st.divider()
 with st.sidebar:
     st.title("🆕 Nuovo Format")
     
-    # 1. VIBE FIX: Reverted to st.text_input (single line) to eliminate Ctrl+Enter
     st.subheader("1. Vibe & Keywords 🎨")
     vibes_input = st.text_input("Stile", placeholder="Lusso, Adrenalinico, Vintage...") 
     st.divider()
@@ -294,9 +292,9 @@ activity_input = st.text_area("Tema Base", placeholder="Es. Robot Wars, La cacci
 if st.button("✨ Inventa 2 Idee", type="primary"):
     with st.spinner("Brainstorming..."):
         
-        # Carica i titoli del catalogo esistente per il controllo duplicati
-        catalog_list = load_catalog_titles()
-        catalog_prompt = "\n".join(catalog_list)
+        # Rimosso il caricamento del catalogo per ridurre il carico sul prompt e prevenire timeout
+        # catalog_list = load_catalog_titles()
+        # catalog_prompt = "\n".join(catalog_list)
         
         budget_str = "Libero" if (capex+opex+rrp)==0 else f"Fissi {capex}€, Var {opex}€, Vendita {rrp}€"
         
@@ -305,11 +303,7 @@ if st.button("✨ Inventa 2 Idee", type="primary"):
         Vibe: {vibes_input}. Budget: {budget_str}. 
         Logistica: {tech_level}, {phys_level}, {', '.join(locs)}.
         
-        IMPORTANTE: NON generare idee che siano SIMILI a quelle presenti nel Catalogo Completo sottostante.
-        Catalogo Completo (Titolo e Tema):
-        ---
-        {catalog_prompt}
-        ---
+        [Rimosso il contesto del Catalogo Completo per la velocità. Ora inventa liberamente.]
         """
         response = call_ai(provider, selected_model, api_key, prompt, json_mode=True)
         if isinstance(response, list):
@@ -337,9 +331,10 @@ if st.session_state.concepts_list:
                 st.success(f"Selezionato: {concept_title}")
             
             if c2.button("💾 Salva per dopo", key=f"save_{idx}"):
+                # Nota: Il controllo duplicati contro il Catalogo Completo è ora disabilitato. Salva l'idea senza controllo avanzato.
                 res = save_to_gsheet(concept_title, activity_input, vibes_input, f"{provider}", str(concept))
                 if res: st.toast(f"✅ Salvato: {concept_title}")
-                else: st.toast("⚠️ Già nel DB")
+                else: st.toast("⚠️ Già nel DB (solo archivio idee)")
 
             if c3.button("🔄 Rigenera (Boccia)", key=f"regen_{idx}"):
                 with st.spinner(f"Rimpiazzo l'idea {idx+1}..."):
@@ -384,4 +379,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.19 (Final Vibe Interaction Fix) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.20 (Context Optimization) - Powered by Teambuilding.it")
