@@ -8,8 +8,14 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import json
 import re
-# NUOVO IMPORTO PER LA FUNZIONE COPIA
-from streamlit_extras.copy_to_clipboard import copy_to_clipboard 
+# RIMOZIONE DI: from streamlit_extras.copy_to_clipboard import copy_to_clipboard 
+# Per risolvere ModuleNotFoundError
+
+# --- FUNZIONE HELPER PER IL NOME DEL FILE ---
+def sanitize_filename(title):
+    """Rimuove caratteri non validi e spazi per creare un nome di file pulito."""
+    # Sostituisce gli spazi con underscore, poi rimuove i caratteri non alfanumerici
+    return re.sub(r'[^\w\-_]', '', title.replace(' ', '_')) 
 
 # --- 0. GESTIONE DATABASE (GOOGLE SHEETS) ---
 SHEET_NAME = "TimmyWonka_DB"
@@ -433,13 +439,11 @@ if st.session_state.selected_concept:
         
         st.info(f"L'ultimo output di Timmy Wonka è salvato come asset finale. Per modificarlo, usa la chat qui sotto.")
         
-        # Area visuale dell'ultimo asset
         with st.expander("📝 VEDI ULTIMO ASSET PRODOTTO", expanded=False):
             st.markdown(st.session_state.assets)
 
         st.subheader("Chat di Refinement 💬")
         
-        # Visualizzazione Chat
         for role, content in st.session_state.phase2_history:
             if role == "user":
                 st.chat_message("user").markdown(content)
@@ -455,17 +459,15 @@ if st.session_state.selected_concept:
             height=100
         )
         
-        # PULSANTE 1: INVIA RICHIESTA
         if col_chat.button("💬 Invia Richiesta / Continua la Chat", use_container_width=True):
             if comment_input:
                 with st.spinner("Timmy sta elaborando la richiesta..."):
                     handle_refinement_turn(comment_input) 
-                    del st.session_state.comment_input
+                    del st.session_state.comment_input 
                     st.rerun()
             else:
                 st.warning("Scrivi un commento o una richiesta!")
 
-        # PULSANTE 2: SALVA VERSIONE FINALE
         if col_save.button("💾 Salva Versione Finale", type="primary", use_container_width=True):
             
             final_title = st.session_state.selected_concept
@@ -483,8 +485,15 @@ if st.session_state.selected_concept:
             if res: st.success(f"✅ Versione finale di '{final_title}' salvata nel DB!")
             else: st.error("⚠️ Errore nel salvataggio o idea già presente.")
             
-        # PULSANTE 3: COPIA NEGLI APPUNTI (Utilizza la funzione della libreria importata)
-        copy_to_clipboard(st.session_state.assets, label="📋 Copia Ultimo Asset", key="copy_final_asset", help="Copia l'intero contenuto della Scheda Tecnica/Riassunto negli appunti")
+        # Pulsante Download Nativo (Sostituisce il componente esterno)
+        file_name = f"{sanitize_filename(st.session_state.selected_concept)}_Final.txt"
+        col_copy.download_button(
+            label="⬇️ Scarica Ultimo Asset (.txt)", 
+            data=st.session_state.assets, 
+            file_name=file_name, 
+            mime="text/plain",
+            use_container_width=True
+        )
 
 
 # FASE 3
@@ -497,7 +506,8 @@ if st.session_state.assets:
             pitch_res = call_ai(st.session_state.provider, st.session_state.selected_model, st.session_state.api_key, p_pitch, history=st.session_state.phase2_history, json_mode=False)
             
             st.markdown(pitch_res)
-            st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
+            file_name_pitch = f"{sanitize_filename(st.session_state.selected_concept)}_Pitch.txt"
+            st.download_button("Scarica Pitch", pitch_res, file_name_pitch)
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.28 (Copy to Clipboard) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.29 (Native Download Fix) - Powered by Teambuilding.it")
