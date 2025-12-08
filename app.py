@@ -8,13 +8,11 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import json
 import re
-# RIMOZIONE DI: from streamlit_extras.copy_to_clipboard import copy_to_clipboard 
-# Per risolvere ModuleNotFoundError
+from streamlit_extras.copy_to_clipboard import copy_to_clipboard 
 
 # --- FUNZIONE HELPER PER IL NOME DEL FILE ---
 def sanitize_filename(title):
     """Rimuove caratteri non validi e spazi per creare un nome di file pulito."""
-    # Sostituisce gli spazi con underscore, poi rimuove i caratteri non alfanumerici
     return re.sub(r'[^\w\-_]', '', title.replace(' ', '_')) 
 
 # --- 0. GESTIONE DATABASE (GOOGLE SHEETS) ---
@@ -139,7 +137,7 @@ if not st.session_state.authenticated:
 
 SYSTEM_PROMPT = """
 SEI TIMMY WONKA, Direttore R&D di Teambuilding.it.
-Obiettivo: Format di team building reali, scalabili e ad alto margine.
+Obiettivo: Sviluppare Format di team building divertenti, basati sul gioco (gamification e ludico), reali, scalabili e ad alto margine.
 IMPORTANTE: Non usare mai acronimi tecnici (Capex/Opex) nelle risposte. Usa "Costi Fissi", "Costi Variabili".
 """
 
@@ -186,6 +184,15 @@ def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
             
             final_prompt = "\n".join([f"[{m['role'].upper()}]: {m['content']}" for m in messages[1:]])
             response = model.generate_content(final_prompt)
+            
+            # --- FIX ERRORE GEMINI (SAFETY BLOCK) ---
+            if not response.candidates:
+                if hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
+                    block_reason = response.prompt_feedback.block_reason.name
+                    return f"❌ CONTENUTO BLOCCATO DA GEMINI. Motivo: Il prompt o l'output hanno violato le policy di sicurezza di Google (Motivo: {block_reason}). Riprova con un prompt meno sensibile."
+                else:
+                    return "❌ ERRORE GEMINI SCONOSCIUTO: Nessun candidato restituito."
+            
             text_response = response.text
         
         if json_mode:
@@ -510,4 +517,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, file_name_pitch)
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.29 (Native Download Fix) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.30 (Gemini Safety Block Fix) - Powered by Teambuilding.it")
