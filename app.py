@@ -54,8 +54,8 @@ def load_catalog_titles():
         print(f"Errore caricamento Catalogo: {e}")
         return []
 
-
-def save_to_gsheet(title, theme, vibe, author, full_concept):
+# MODIFICATA LA FUNZIONE PER SALVARE LA DESCRIZIONE NELLA SECONDA COLONNA
+def save_to_gsheet(title, description, vibe, author, full_concept):
     sheet = get_db_connection(worksheet_index=0)
     if sheet:
         try:
@@ -67,11 +67,13 @@ def save_to_gsheet(title, theme, vibe, author, full_concept):
             if title in titles:
                 return False 
             
+            # NOTA: La colonna "Tema" ora conterrà la descrizione del concept
             if not titles:
                 sheet.append_row(["Titolo", "Tema", "Vibe", "Data", "Autore", "Concept"])
 
             date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-            row = [title, theme, vibe, date_str, author, full_concept]
+            # Mappatura aggiornata: description va al posto di theme
+            row = [title, description, vibe, date_str, author, full_concept]
             sheet.append_row(row)
             return True
         except Exception as e:
@@ -144,7 +146,6 @@ def clean_json_text(text):
 
 def call_ai(provider, model_id, api_key, prompt, json_mode=False):
     if json_mode:
-        # ISTRUZIONE JSON RAFFORZATA per garantire descrizione e chiavi
         json_instruction = """
         RISPONDI SOLO CON UN ARRAY JSON VALIDO con esattamente 2 oggetti. 
         Ogni oggetto DEVE contenere due chiavi: 'titolo' (stringa breve) e 'descrizione' (stringa lunga, ALMENO 5 frasi di dettaglio sul format). Niente testo extra.
@@ -297,6 +298,9 @@ activity_input = st.text_area("Tema Base", placeholder="Es. Robot Wars, La cacci
 if st.button("✨ Inventa 2 Idee", type="primary"):
     with st.spinner("Brainstorming..."):
         
+        catalog_list = load_catalog_titles()
+        catalog_prompt = "\n".join(catalog_list)
+        
         budget_str = "Libero" if (capex+opex+rrp)==0 else f"Fissi {capex}€, Var {opex}€, Vendita {rrp}€"
         
         prompt = f"""
@@ -319,10 +323,12 @@ if st.session_state.concepts_list:
     
     for idx, concept in enumerate(st.session_state.concepts_list):
         with st.container(border=True):
+            # 1. Estrazione della descrizione completa per il salvataggio
             concept_title = concept.get('titolo', concept.get('title', 'Senza Titolo'))
+            concept_description = concept.get('descrizione', concept.get('description', 'Nessuna descrizione fornita dall\'AI.')) # Estrai descrizione
+            
             st.subheader(f"{idx+1}. {concept_title}")
-            st.markdown(concept.get('descrizione', concept.get('description', ''))
-)
+            st.markdown(concept_description) # Visualizza la descrizione
             
             c1, c2, c3 = st.columns([1, 1, 1])
             
@@ -331,8 +337,10 @@ if st.session_state.concepts_list:
                 st.session_state.assets = ""
                 st.success(f"Selezionato: {concept_title}")
             
+            # CHIAMATA ALLA NUOVA FUNZIONE DI SALVATAGGIO
             if c2.button("💾 Salva per dopo", key=f"save_{idx}"):
-                res = save_to_gsheet(concept_title, activity_input, vibes_input, f"{provider}", str(concept))
+                # Mappatura: title, description, vibe, author, full_json
+                res = save_to_gsheet(concept_title, concept_description, vibes_input, f"{provider}", str(concept)) 
                 if res: st.toast(f"✅ Salvato: {concept_title}")
                 else: st.toast("⚠️ Già nel DB")
 
@@ -379,4 +387,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.21 (JSON Detail Enforcement) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.22 (Salvataggio Corretto) - Powered by Teambuilding.it")
