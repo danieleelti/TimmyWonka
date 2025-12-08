@@ -111,7 +111,7 @@ if not st.session_state.authenticated:
     st.stop()
 
 # ==============================================================================
-# LOGICA AI
+# LOGICA AI (AGGIORNATA SENZA ACRONIMI)
 # ==============================================================================
 
 SYSTEM_PROMPT = """
@@ -121,9 +121,13 @@ Utenti: Team builder PRO (20+ anni exp). Non spiegare l'ovvio. Sii tecnico, crea
 IL TUO COMPITO:
 Sviluppare format di team building reali, scalabili e ad alto margine.
 
+REGOLE DI LINGUAGGIO (IMPORTANTE):
+- NON usare MAI acronimi tecnici aziendali come CAPEX, OPEX o RRP nelle tue risposte.
+- Usa sempre termini estesi e chiari in italiano, ad esempio: "Costi Fissi/Una Tantum", "Costi Variabili per persona", "Prezzo di Vendita".
+
 REGOLE SUL BUDGET:
-- Se non specificati, ignora i vincoli economici e punta sulla massima creatività.
-- Se specificati, rispetta RIGOROSAMENTE i limiti di CAPEX e OPEX.
+- Se i valori sono 0, ignora i vincoli economici e punta sulla massima creatività (Budget Libero).
+- Se specificati, rispetta RIGOROSAMENTE i limiti indicati.
 
 TONO:
 Creativo (Wonka) ma Logisticamente Spietato (Timmy).
@@ -197,7 +201,7 @@ with st.expander("🧠 Configurazione Cervello AI & Versioni", expanded=True):
 
 st.divider()
 
-# --- SIDEBAR RIORGANIZZATA ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.title("🆕 Nuovo Format")
     
@@ -207,7 +211,7 @@ with st.sidebar:
     
     st.divider()
     
-    # 2. LOGISTICA (Spostata SOPRA il budget)
+    # 2. LOGISTICA
     st.subheader("2. Logistica 📦")
     tech_level = st.select_slider("Livello Tech", ["Low Tech", "Hybrid", "High Tech"])
     phys_level = st.select_slider("Livello Fisico", ["Sedentario", "Leggero", "Attivo"])
@@ -222,12 +226,12 @@ with st.sidebar:
     
     st.divider()
     
-    # 3. BUDGET (Modificato: Parte da 0)
+    # 3. BUDGET (Descrizioni estese)
     st.subheader("3. Budget Control 💰")
     st.caption("Lascia a 0 per nessun limite.")
-    capex = st.number_input("Costo una tantum (€)", value=0)
-    opex = st.number_input("Costo materiali a persona (€)", value=0)
-    rrp = st.number_input("Costo di vendita a persona (€)", value=0)
+    capex = st.number_input("Costo una tantum (€)", value=0, help="Costi fissi iniziali (attrezzature, materiali riutilizzabili)")
+    opex = st.number_input("Costo materiali a persona (€)", value=0, help="Costi variabili per ogni partecipante (consumabili)")
+    rrp = st.number_input("Costo di vendita a persona (€)", value=0, help="Prezzo al cliente finale")
 
 # --- MAIN ---
 st.title("🎩💡🎯 Timmy Wonka e la fabbrica dei Format 🏆🧠💰")
@@ -265,21 +269,20 @@ activity_input = st.text_input("Tema Base dell'Attività", placeholder="Es. Cena
 
 if st.button("Inventa 3 Concept", type="primary"):
     with st.spinner(f"Timmy ({selected_model}) sta elaborando..."):
-        # Costruzione stringa location
         loc_str = ", ".join(location_list) if location_list else "Qualsiasi"
         
-        # LOGICA BUDGET INTELLIGENTE
+        # LOGICA BUDGET E NO ACRONIMI
         if capex == 0 and opex == 0 and rrp == 0:
             budget_str = "NESSUN VINCOLO DI BUDGET (Open Budget). Ignora i costi e focalizzati sulla creatività pura."
         else:
-            budget_str = f"VINCOLI DI BUDGET ATTIVI: CAPEX Max {capex}€, OPEX Max {opex}€/pax, Prezzo Vendita Target {rrp}€/pax."
+            budget_str = f"VINCOLI DI BUDGET: Costi Fissi Max {capex}€, Costi Variabili Max {opex}€/pax, Prezzo Vendita {rrp}€/pax."
 
         prompt = f"""
         ESEGUI FASE 1. 
         Tema: {activity_input}
         Vibe: {vibes_input if vibes_input else "Libero"}
         
-        BUDGET: 
+        BUDGET DA RISPETTARE: 
         {budget_str}
         
         LOGISTICA: 
@@ -287,7 +290,7 @@ if st.button("Inventa 3 Concept", type="primary"):
         Fisicità: {phys_level}
         Location supportate: {loc_str}.
         
-        Dammi 3 concept distinti.
+        Dammi 3 concept distinti. RICORDA: Niente acronimi (Capex/Opex), usa descrizioni italiane.
         """
         response = call_ai(provider, selected_model, api_key, prompt)
         st.session_state.concepts = response
@@ -298,12 +301,15 @@ if st.session_state.concepts:
     st.divider()
     col_sel1, col_sel2 = st.columns([3, 1])
     with col_sel1:
-        st.info("Copia qui sotto il titolo del concept:")
+        st.info("Copia qui sotto il titolo del concept che vuoi salvare:")
         st.session_state.selected_concept = st.text_input("Titolo Scelto", value=st.session_state.selected_concept)
     with col_sel2:
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.session_state.selected_concept and not st.session_state.idea_saved:
-            if st.button("☁️ Salva su Google Sheet"):
+        # PULSANTE SALVA SEMPRE VISIBILE
+        if st.button("☁️ Salva su Google Sheet", use_container_width=True):
+            if not st.session_state.selected_concept:
+                st.error("⚠️ Scrivi prima un titolo nel box a sinistra!")
+            else:
                 with st.spinner("Salvataggio in corso..."):
                     success = save_to_gsheet(
                         st.session_state.selected_concept, 
@@ -313,12 +319,13 @@ if st.session_state.concepts:
                         st.session_state.concepts
                     )
                     if success:
-                        st.success("Salvato!")
+                        st.success("✅ Salvato nel DB!")
                         st.session_state.idea_saved = True
                     else:
-                        st.warning("Errore o Già Presente!")
-        elif st.session_state.idea_saved:
-             st.button("✅ Archiviato", disabled=True)
+                        st.warning("⚠️ Già presente o Errore!")
+        
+        if st.session_state.idea_saved:
+            st.caption("✅ Idea archiviata")
 
 # FASE 2
 if st.session_state.selected_concept:
@@ -328,8 +335,10 @@ if st.session_state.selected_concept:
     if st.button(btn_label):
         with st.spinner("Progettazione..."):
             prompt = f"""
-            ESEGUI FASE 2 per: "{st.session_state.selected_concept}". Tema: {activity_input}. Vibe: {vibes_input}.
+            ESEGUI FASE 2 per: "{st.session_state.selected_concept}". 
+            Tema Originale: {activity_input}. Vibe: {vibes_input}.
             Output: SCHEDA TECNICA COMPLETA.
+            RICORDA: Usa "Costi Fissi", "Costi Variabili", "Prezzo Vendita". NIENTE CAPEX/OPEX.
             """
             response = call_ai(provider, selected_model, api_key, prompt)
             st.session_state.assets = response
@@ -343,10 +352,11 @@ if st.session_state.assets:
     st.header("Fase 3: Sales Pitch 💼")
     if st.button("Genera Slide"):
         with st.spinner("Creazione pitch..."):
-            prompt = f"ESEGUI FASE 3 per: '{st.session_state.selected_concept}'. Target: HR. Prezzo: {rrp}€. Vibe: {vibes_input}."
+            prompt = f"""
+            ESEGUI FASE 3 per: '{st.session_state.selected_concept}'. 
+            Target: HR. Prezzo: {rrp}€. Vibe: {vibes_input}.
+            RICORDA: Linguaggio chiaro, niente acronimi tecnici.
+            """
             response = call_ai(provider, selected_model, api_key, prompt)
             st.markdown(response)
-            st.download_button("Scarica Slide (.txt)", data=response, file_name="pitch.txt")
-
-st.markdown("---")
-st.caption("Timmy Wonka v2.2 (Cloud Edition) - Powered by Teambuilding.it")
+            st.download_button("
