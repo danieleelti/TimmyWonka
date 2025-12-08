@@ -15,8 +15,10 @@ SHEET_NAME = "TimmyWonka_DB"
 def get_db_connection():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        # Controllo se esiste la chiave del service account
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
+            # Fix per i newline nelle chiavi private
             if "\\n" in creds_dict["private_key"]:
                 creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
@@ -77,27 +79,24 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. GESTIONE SICUREZZA (FIXED) ---
+# --- 2. GESTIONE SICUREZZA ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-# Controllo Esplicito: La password esiste nei secrets?
 if "login_password" not in st.secrets:
     st.error("⚠️ Configurazione Errata: Manca la chiave 'login_password' nel file secrets.toml.")
     st.info("Aggiungi: login_password = \"LaTuaPassword\" nei secrets.")
     st.stop()
 
 def check_password():
-    # FIX: Controlliamo esplicitamente se la chiave è già stata creata (AttributeError fix)
     if 'password_input' not in st.session_state:
-        # Se il campo input non è ancora registrato nello stato (errore di timing), saltiamo
         return
         
     password_typed = st.session_state.password_input
 
     if password_typed == st.secrets["login_password"]:
         st.session_state.authenticated = True
-        del st.session_state.password_input # Pulizia per evitare leakage
+        del st.session_state.password_input
     else:
         st.error("🚫 Password Errata.")
 
@@ -106,7 +105,6 @@ if not st.session_state.authenticated:
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.title("🔒 Timmy Wonka R&D")
-        # Rimosso on_change per affidarsi solo al pulsante
         st.text_input("Password", type="password", key="password_input") 
         st.button("Entra 🔓", on_click=check_password)
     st.stop()
@@ -190,12 +188,13 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
         provider = st.selectbox("Provider", ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"])
     
     with c2:
+        # LOGICA FIXATA: Se la chiave è nei secrets, la usa SILENZIOSAMENTE. Altrimenti mostra input.
         key_map = {"Google Gemini": "GOOGLE_API_KEY", "ChatGPT": "OPENAI_API_KEY", "Claude (Anthropic)": "ANTHROPIC_API_KEY", "Groq": "GROQ_API_KEY", "Grok (xAI)": "XAI_API_KEY"}
         secret_key_name = key_map[provider]
         
         if secret_key_name in st.secrets:
             api_key = st.secrets[secret_key_name]
-            st.success("🔑 Key caricata da Secrets", icon="✅")
+            # MESSAGGIO RIMOSSO! (Era qui il st.success)
         else:
             api_key = st.text_input("Inserisci API Key", type="password")
 
@@ -203,7 +202,6 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
         models = []
         if api_key:
             try:
-                # Assuming aiversion is correctly imported and functional
                 if provider == "Google Gemini": models = aiversion.get_gemini_models(api_key)
                 elif provider == "ChatGPT": models = aiversion.get_openai_models(api_key)
                 elif provider == "Claude (Anthropic)": models = aiversion.get_anthropic_models(api_key)
@@ -341,4 +339,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.8 (Login Attribute Fix) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.9 (Hidden Key Confirmation) - Powered by Teambuilding.it")
