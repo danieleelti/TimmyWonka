@@ -126,7 +126,7 @@ if not st.session_state.authenticated:
     st.stop()
 
 # ==============================================================================
-# LOGICA AI
+# LOGICA AI (Adattata per chat history)
 # ==============================================================================
 
 SYSTEM_PROMPT = """
@@ -142,48 +142,52 @@ def clean_json_text(text):
         text = re.sub(r"```$", "", text)
     return text.strip()
 
-def call_ai(provider, model_id, api_key, prompt, json_mode=False):
+
+# Funzione AI unica per generazione e chat (adatta l'input/output per la history)
+def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
+    
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    
+    if history:
+        # Se c'è una history, aggiungi i messaggi precedenti
+        for role, content in history:
+            messages.append({"role": role, "content": content})
+    
+    # Aggiungi il prompt utente
+    messages.append({"role": "user", "content": prompt})
+    
+    # Aggiungi istruzione JSON specifica all'ultimo messaggio utente
     if json_mode:
-        json_instruction = """
-        RISPONDI SOLO CON UN ARRAY JSON VALIDO con esattamente 2 oggetti. 
-        Ogni oggetto DEVE contenere due chiavi: 'titolo' (stringa breve) e 'descrizione' (stringa lunga, ALMENO 5 frasi di dettaglio sul format). Niente testo extra.
-        """
-        full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}\n\n{json_instruction}"
-    else:
-        full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}"
-        
+        messages[-1]["content"] += "\nRISPONDI SOLO CON UN ARRAY JSON VALIDO: [{{'titolo':'...', 'descrizione':'...'}}]. Niente testo extra."
+
+
     try:
         text_response = ""
-        if provider == "Google Gemini":
+        # Logica per i vari provider che supportano il formato 'messages'
+        if provider in ["ChatGPT", "Groq", "Grok (xAI)"]:
+            base_url = None
+            if provider == "Groq": base_url="[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)"
+            elif provider == "Grok (xAI)": base_url="[https://api.x.ai/v1](https://api.x.ai/v1)"
+            
+            client = OpenAI(api_key=api_key, base_url=base_url)
+            response = client.chat.completions.create(
+                model=model_id, 
+                messages=messages
+            )
+            text_response = response.choices[0].message.content
+            
+        elif provider == "Google Gemini":
+            # Gemini SDK requires history to be passed differently or constructed manually
+            # Simplifying for single-turn or simple conversation structure:
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel(model_id)
-            response = model.generate_content(full_prompt)
+            
+            # Per evitare rifattorizzazioni profonde, usiamo il prompt completo
+            final_prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages[1:]])
+            response = model.generate_content(final_prompt)
             text_response = response.text
-        elif provider == "ChatGPT":
-            client = OpenAI(api_key=api_key)
-            response = client.chat.completions.create(
-                model=model_id, messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": full_prompt}]
-            )
-            text_response = response.choices[0].message.content
-        elif provider == "Claude (Anthropic)":
-            client = Anthropic(api_key=api_key)
-            message = client.messages.create(
-                model=model_id, max_tokens=4000, system=SYSTEM_PROMPT, messages=[{"role": "user", "content": full_prompt}]
-            )
-            text_response = message.content[0].text
-        elif provider == "Groq":
-            client = OpenAI(base_url="[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)", api_key=api_key)
-            response = client.chat.completions.create(
-                model=model_id, messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": full_prompt}]
-            )
-            text_response = response.choices[0].message.content
-        elif provider == "Grok (xAI)":
-            client = OpenAI(base_url="[https://api.x.ai/v1](https://api.x.ai/v1)", api_key=api_key)
-            response = client.chat.completions.create(
-                model=model_id, messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": full_prompt}]
-            )
-            text_response = response.choices[0].message.content
         
+        # Gestione Parsing
         if json_mode:
             try:
                 cleaned_text = clean_json_text(text_response)
@@ -197,17 +201,55 @@ def call_ai(provider, model_id, api_key, prompt, json_mode=False):
         if json_mode: return [{"titolo": "Errore API", "descrizione": f"Errore tecnico: {str(e)}"}]
         else: return f"❌ Errore API: {str(e)}"
 
-
 def generate_technical_sheet(concept_title, activity_input, vibes_input, provider, selected_model, api_key):
-    """Funzione che incapsula la logica di generazione della Scheda Tecnica (Fase 2)."""
-    with st.spinner("Elaborazione tecnica automatica..."):
-        prompt = f"""
-        Scheda tecnica dettagliata per il format: "{concept_title}".
-        Tema: {activity_input}. Vibe: {vibes_input}.
-        Output richiesto in Markdown ben formattato.
-        NO Acronimi.
-        """
-        st.session_state.assets = call_ai(provider, selected_model, api_key, prompt, json_mode=False)
+    """Funzione che inizializza la Fase 2 e la chat history."""
+    
+    initial_prompt = f"""
+    Genera la Scheda Tecnica dettagliata per il format: "{concept_title}".
+    Tema Originale: {activity_input}. Vibe: {vibes_input}.
+    Rispondi SOLTANTO con la Scheda Tecnica completa, formattata in Markdown.
+    NO Acronimi.
+    """
+    
+    st.session_state.assets = call_ai(provider, selected_model, api_key, initial_prompt, json_mode=False)
+    
+    # Inizializza la chat history con l'input e l'output iniziale
+    st.session_state.phase2_history = [
+        ("user", initial_prompt),
+        ("assistant", st.session_state.assets)
+    ]
+
+
+def refine_technical_sheet(comment):
+    """Aggiunge un messaggio alla chat history e chiama l'AI per la modifica."""
+    
+    # Aggiungi il commento utente alla history
+    st.session_state.phase2_history.append(("user", f"Richiesta di modifica/commento: {comment}"))
+
+    # Rimuovi l'ultima risposta dell'assistente per concentrare l'output
+    # L'AI userà tutta la history per rispondere
+    
+    history_messages = st.session_state.phase2_history 
+    
+    # L'ultimo messaggio utente è la richiesta di modifica. Chiedi all'AI di produrre la nuova versione.
+    last_prompt = f"""
+    Rivedi e ricrea la Scheda Tecnica precedente in base al mio ultimo commento/richiesta di modifica. 
+    L'output deve essere SOLO la Scheda Tecnica finale, completa, in Markdown.
+    """
+    
+    # Chiama l'AI usando tutta la history
+    new_asset = call_ai(
+        st.session_state.provider, 
+        st.session_state.selected_model, 
+        st.session_state.api_key, 
+        last_prompt, 
+        history=history_messages,
+        json_mode=False
+    )
+    
+    # Aggiorna gli assets e la history con la nuova risposta
+    st.session_state.assets = new_asset
+    st.session_state.phase2_history.append(("assistant", new_asset))
 
 
 # ==============================================================================
@@ -219,6 +261,7 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
     c1, c2, c3 = st.columns([1, 1, 2])
     with c1: 
         provider = st.selectbox("Provider", ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"])
+        st.session_state.provider = provider # Salva in session state
     
     with c2:
         key_map = {"Google Gemini": "GOOGLE_API_KEY", "ChatGPT": "OPENAI_API_KEY", "Claude (Anthropic)": "ANTHROPIC_API_KEY", "Groq": "GROQ_API_KEY", "Grok (xAI)": "XAI_API_KEY"}
@@ -228,7 +271,8 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
             api_key = st.secrets[secret_key_name]
         else:
             api_key = st.text_input("Inserisci API Key", type="password")
-
+        st.session_state.api_key = api_key # Salva in session state
+    
     with c3:
         models = []
         if api_key:
@@ -258,6 +302,8 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
             selected_model = st.selectbox("Versione", models, index=default_index)
         else:
             selected_model = st.text_input("Versione Manuale (es. gemini-1.5-pro)")
+        st.session_state.selected_model = selected_model # Salva in session state
+
 
 st.divider()
 
@@ -267,6 +313,7 @@ with st.sidebar:
     
     st.subheader("1. Vibe & Keywords 🎨")
     vibes_input = st.text_input("Stile", placeholder="Lusso, Adrenalinico, Vintage...") 
+    st.session_state.vibes_input = vibes_input # Salva in session state
     st.divider()
     
     st.subheader("2. Logistica 📦")
@@ -283,7 +330,9 @@ with st.sidebar:
 if "concepts_list" not in st.session_state: st.session_state.concepts_list = []
 if "selected_concept" not in st.session_state: st.session_state.selected_concept = ""
 if "assets" not in st.session_state: st.session_state.assets = ""
-if "autogenerate_assets" not in st.session_state: st.session_state.autogenerate_assets = False # Nuovo flag per l'automazione
+if "autogenerate_assets" not in st.session_state: st.session_state.autogenerate_assets = False
+if "phase2_history" not in st.session_state: st.session_state.phase2_history = []
+
 
 # --- MAIN ---
 st.title("🦁 Timmy Wonka R&D")
@@ -301,12 +350,13 @@ with st.expander("📂 Archivio Idee (Database)", expanded=False):
             if st.button("🔽 Carica in Fase 2"):
                 st.session_state.selected_concept = sel_saved
                 st.session_state.assets = ""
-                st.session_state.autogenerate_assets = True # Attiva l'autogenerazione
+                st.session_state.autogenerate_assets = True 
                 st.rerun() 
 
 # FASE 1
 st.header("Fase 1: Ideazione 💡")
 activity_input = st.text_area("Tema Base", placeholder="Es. Robot Wars, La caccia al tesoro...", height=150)
+st.session_state.activity_input = activity_input # Salva in session state per Fase 2
 
 if st.button("✨ Inventa 2 Idee", type="primary"):
     with st.spinner("Brainstorming..."):
@@ -341,11 +391,10 @@ if st.session_state.concepts_list:
             
             c1, c2, c3 = st.columns([1, 1, 1])
             
-            # PULSANTE APPROFONDISCI (ora con autogenerazione)
             if c1.button("🚀 Approfondisci", key=f"app_{idx}"):
                 st.session_state.selected_concept = concept_title
                 st.session_state.assets = ""
-                st.session_state.autogenerate_assets = True # Attiva l'autogenerazione
+                st.session_state.autogenerate_assets = True 
                 st.rerun()
             
             if c2.button("💾 Salva per dopo", key=f"save_{idx}"):
@@ -365,53 +414,65 @@ if st.session_state.concepts_list:
                         st.session_state.concepts_list[idx] = new_concept[0]
                         st.rerun()
 
-# FASE 2: LOGICA DI GENERAZIONE AUTOMATICA
+# FASE 2: LOGICA DI GENERAZIONE AUTOMATICA E CHAT
 if st.session_state.selected_concept:
     st.divider()
-    st.header(f"Fase 2: Deep Dive su '{st.session_state.selected_concept}' 🛠️")
+    st.header(f"Fase 2: Deep Dive e Refinement 🛠️")
+    st.subheader(f"Lavorando su: '{st.session_state.selected_concept}'")
 
-    # LOGICA DI AUTO-GENERAZIONE: Scatta se il flag è True (cioè se Approfondisci è stato appena cliccato)
+    # 1. LOGICA DI AUTO-GENERAZIONE: Scatta se il flag è True (Approfondisci appena cliccato)
     if st.session_state.autogenerate_assets:
-        # Chiamata alla funzione di generazione
         generate_technical_sheet(
             st.session_state.selected_concept, 
-            activity_input, 
-            vibes_input, 
-            provider, 
-            selected_model, 
-            api_key
+            st.session_state.activity_input, 
+            st.session_state.vibes_input, 
+            st.session_state.provider, 
+            st.session_state.selected_model, 
+            st.session_state.api_key
         )
         st.session_state.autogenerate_assets = False # Disattiva il flag dopo l'uso
 
-
-# VISUALIZZAZIONE E PULSANTE MANUALE/RIGENERA
-if st.session_state.selected_concept:
-    # Mostra l'output se è stato generato (sia automaticamente che manualmente)
+    # 2. VISUALIZZAZIONE E CHAT CONTROLLER
     if st.session_state.assets:
         with st.expander("📝 VEDI SCHEDA TECNICA", expanded=True):
             st.markdown(st.session_state.assets)
+
+        st.subheader("Modifiche e Commenti:")
+        col_c, col_s = st.columns([4, 1])
         
-        # Pulsante di rigenerazione (se l'output esiste)
-        if st.button(f"🔄 Rigenera Scheda Tecnica con {provider}"):
-            generate_technical_sheet(
-                st.session_state.selected_concept, 
-                activity_input, 
-                vibes_input, 
-                provider, 
-                selected_model, 
-                api_key
+        # Area input per i commenti di refinement
+        comment_input = col_c.text_area("Chiedi a Timmy di modificare/migliorare la scheda tecnica attuale:", key="comment_input", height=100)
+        
+        # PULSANTE MODIFICA/RIGENERA (Chat Turn)
+        if col_c.button("💬 Invia Modifiche / Rigenera", use_container_width=True):
+            if comment_input:
+                with st.spinner("Timmy sta revisionando la scheda in base ai tuoi commenti..."):
+                    refine_technical_sheet(comment_input)
+                    st.session_state.comment_input = "" # Pulisci l'input
+                    st.rerun()
+            else:
+                st.warning("Scrivi un commento o una richiesta di modifica!")
+
+        # PULSANTE SALVA VERSIONE FINALE (Richiesta Utente)
+        if col_s.button("💾 Salva Versione Finale", type="primary", use_container_width=True):
+            
+            # Prendiamo l'ultima versione dell'asset e i dati originali
+            final_title = st.session_state.selected_concept
+            final_description = st.session_state.assets
+            original_vibe = st.session_state.vibes_input
+            
+            # Salvataggio
+            res = save_to_gsheet(
+                final_title, 
+                final_description, 
+                original_vibe, 
+                st.session_state.provider, 
+                "Final Version"
             )
-    else:
-        # Pulsante di generazione manuale (se l'output non esiste ancora)
-        if st.button(f"Genera Scheda Tecnica con {provider}"):
-            generate_technical_sheet(
-                st.session_state.selected_concept, 
-                activity_input, 
-                vibes_input, 
-                provider, 
-                selected_model, 
-                api_key
-            )
+            
+            if res: st.success(f"✅ Versione finale di '{final_title}' salvata nel DB!")
+            else: st.error("⚠️ Errore nel salvataggio o idea già presente.")
+
 
 # FASE 3
 if st.session_state.assets:
@@ -419,10 +480,10 @@ if st.session_state.assets:
     if st.button("Genera Slide"):
         with st.spinner("Writing pitch..."):
             p_pitch = f"Sales pitch per '{st.session_state.selected_concept}'. Target HR. Prezzo {rrp}."
-            pitch_res = call_ai(provider, selected_model, api_key, p_pitch, json_mode=False)
+            pitch_res = call_ai(st.session_state.provider, st.session_state.selected_model, st.session_state.api_key, p_pitch, json_mode=False)
             
             st.markdown(pitch_res)
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.24 (Auto Deep-Dive) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.25 (Iterative Refinement) - Powered by Teambuilding.it")
