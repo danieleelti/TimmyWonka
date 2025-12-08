@@ -15,10 +15,8 @@ SHEET_NAME = "TimmyWonka_DB"
 def get_db_connection():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        # Controllo se esiste la chiave del service account
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
-            # Fix per i newline nelle chiavi private
             if "\\n" in creds_dict["private_key"]:
                 creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
@@ -216,7 +214,6 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
                 try:
                     default_index = models.index(default_model_name)
                 except ValueError:
-                    # Se il modello Pro non è disponibile, usa il primo della lista (che di solito è Flash)
                     pass 
             
             selected_model = st.selectbox("Versione", models, index=default_index)
@@ -266,7 +263,8 @@ with st.expander("📂 Archivio Idee (Database)", expanded=False):
 
 # FASE 1
 st.header("Fase 1: Ideazione 💡")
-activity_input = st.text_input("Tema Base", placeholder="Es. Robot Wars...")
+# CAMPO PRINCIPALE A TEXT_AREA (5+ righe)
+activity_input = st.text_area("Tema Base", placeholder="Es. Robot Wars, La caccia al tesoro...", height=150)
 
 if st.button("✨ Inventa 3 Idee", type="primary"):
     with st.spinner("Brainstorming..."):
@@ -347,4 +345,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.10 (Gemini Default Fix) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.11 (Large Main Prompt) - Powered by Teambuilding.it")
