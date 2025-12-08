@@ -8,30 +8,25 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
 # --- 0. GESTIONE DATABASE (GOOGLE SHEETS) ---
-# Assicurati che il nome qui sotto sia ESATTO come il tuo file Google Sheet
 SHEET_NAME = "TimmyWonka_DB"
 
 def get_db_connection():
     """Connette al Google Sheet usando i Secrets."""
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        # Carica credenziali dai secrets
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
-            
-            # Fix per la private_key se i \n vengono letti male
+            # Fix per i newline nelle chiavi private
             if "\\n" in creds_dict["private_key"]:
                 creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-                
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             client = gspread.authorize(creds)
             sheet = client.open(SHEET_NAME).sheet1
             return sheet
         else:
-            st.error("❌ Manca la configurazione [gcp_service_account] nei Secrets!")
             return None
     except Exception as e:
-        st.error(f"❌ Errore connessione Database: {e}")
+        st.error(f"❌ Errore DB: {e}")
         return None
 
 def load_db_ideas():
@@ -49,16 +44,14 @@ def save_to_gsheet(title, theme, vibe, author, full_concept):
     sheet = get_db_connection()
     if sheet:
         try:
-            # Controlla duplicati
             try:
                 titles = sheet.col_values(1)
             except:
                 titles = []
             
             if title in titles:
-                return False # Già esiste
+                return False 
             
-            # Se il foglio è vuoto, aggiunge intestazioni
             if not titles:
                 sheet.append_row(["Titolo", "Tema", "Vibe", "Data", "Autore", "Concept"])
 
@@ -186,7 +179,7 @@ with st.expander("🧠 Configurazione Cervello AI & Versioni", expanded=True):
         secret_key_name = key_map[provider]
         if secret_key_name in st.secrets:
             api_key = st.secrets[secret_key_name]
-            st.markdown(f"<br>✅ **Key Caricata**", unsafe_allow_html=True)
+            # NESSUN MESSAGGIO VISIVO QUI (Chiave caricata silenziosamente)
         else:
             api_key = st.text_input("Inserisci API Key", type="password")
     with col_ai3:
@@ -208,18 +201,31 @@ st.divider()
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("🆕 Nuovo Format")
+    
     st.subheader("1. Vibe & Keywords 🎨")
     vibes_input = st.text_area("Stile", placeholder="Es. Lusso, Adrenalinico...", height=150)
+    
     st.divider()
+    
     st.subheader("2. Budget Control 💰")
     capex = st.number_input("Costo una tantum (€)", 2000)
     opex = st.number_input("Costo materiali a persona (€)", 15)
     rrp = st.number_input("Costo di vendita a persona (€)", 120)
+    
     st.divider()
+    
     st.subheader("3. Logistica 📦")
     tech_level = st.select_slider("Livello Tech", ["Low Tech", "Hybrid", "High Tech"])
     phys_level = st.select_slider("Livello Fisico", ["Sedentario", "Leggero", "Attivo"])
-    location_list = st.multiselect("Location", ["Indoor", "Outdoor", "Durante i pasti", "Ibrido", "Remoto"], default=["Indoor"])
+    
+    st.markdown("**Location (Seleziona):**")
+    location_list = []
+    # CHECKBOX INVECE DI MULTISELECT
+    if st.checkbox("Indoor", value=True): location_list.append("Indoor")
+    if st.checkbox("Outdoor"): location_list.append("Outdoor")
+    if st.checkbox("Durante i pasti (Dinner Game)"): location_list.append("Durante i pasti (Dinner Game)")
+    if st.checkbox("Ibrido"): location_list.append("Ibrido")
+    if st.checkbox("Remoto"): location_list.append("Remoto")
 
 # --- MAIN ---
 st.title("🎩💡🎯 Timmy Wonka e la fabbrica dei Format 🏆🧠💰")
@@ -237,9 +243,8 @@ with st.expander("📂 Archivio Idee (Google Sheets Cloud)", expanded=False):
         
     saved_ideas = load_db_ideas()
     if not saved_ideas:
-        st.info("Database vuoto o non connesso. Assicurati di aver condiviso il foglio con l'email del bot!")
+        st.info("Database vuoto o non connesso.")
     else:
-        # Crea lista titoli
         titles = [i.get('Titolo', 'Senza titolo') for i in saved_ideas if isinstance(i, dict)]
         selected_db_title = st.selectbox("Seleziona un'idea da approfondire:", ["-- Scegli --"] + titles)
         
@@ -325,4 +330,4 @@ if st.session_state.assets:
             st.download_button("Scarica Slide (.txt)", data=response, file_name="pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.0 (Cloud Edition) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.1 (Cloud Edition) - Powered by Teambuilding.it")
