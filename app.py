@@ -102,35 +102,29 @@ if not st.session_state.authenticated:
     st.stop()
 
 # ==============================================================================
-# LOGICA AI (JSON MODE)
+# LOGICA AI (HYBRID MODE: JSON + TEXT)
 # ==============================================================================
 
 SYSTEM_PROMPT = """
-SEI TIMMY WONKA, Direttore R&D.
-Il tuo compito è generare format di team building.
-IMPORTANTE: Non usare mai acronimi tecnici (Capex/Opex) nelle risposte.
-
-FORMATO OUTPUT RICHIESTO:
-Devi rispondere SEMPRE E SOLO con un array JSON valido. 
-Esempio:
-[
-  {"titolo": "Titolo Idea 1", "descrizione": "Dettagli completi..."},
-  {"titolo": "Titolo Idea 2", "descrizione": "Dettagli completi..."}
-]
-Non aggiungere testo prima o dopo il JSON.
+SEI TIMMY WONKA, Direttore R&D di Teambuilding.it.
+Obiettivo: Format di team building reali, scalabili e ad alto margine.
+IMPORTANTE: Non usare mai acronimi tecnici (Capex/Opex) nelle risposte. Usa "Costi Fissi", "Costi Variabili".
 """
 
 def clean_json_text(text):
-    """Pulisce la risposta dall'AI per estrarre solo il JSON."""
     text = text.strip()
-    # Rimuove i backticks di markdown se presenti (```json ... ```)
     if text.startswith("```"):
         text = re.sub(r"^```(json)?", "", text)
         text = re.sub(r"```$", "", text)
     return text.strip()
 
-def call_ai(provider, model_id, api_key, prompt):
-    full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}"
+def call_ai(provider, model_id, api_key, prompt, json_mode=False):
+    # Se serve JSON, aggiungiamo istruzioni forti al prompt
+    if json_mode:
+        full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}\n\nRISPONDI SOLO CON UN ARRAY JSON VALIDO: [{{...}}, {{...}}]. Niente testo extra."
+    else:
+        full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}"
+        
     try:
         text_response = ""
         if provider == "Google Gemini":
@@ -141,38 +135,41 @@ def call_ai(provider, model_id, api_key, prompt):
         elif provider == "ChatGPT":
             client = OpenAI(api_key=api_key)
             response = client.chat.completions.create(
-                model=model_id, messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
+                model=model_id, messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": full_prompt}]
             )
             text_response = response.choices[0].message.content
         elif provider == "Claude (Anthropic)":
             client = Anthropic(api_key=api_key)
             message = client.messages.create(
-                model=model_id, max_tokens=4000, system=SYSTEM_PROMPT, messages=[{"role": "user", "content": prompt}]
+                model=model_id, max_tokens=4000, system=SYSTEM_PROMPT, messages=[{"role": "user", "content": full_prompt}]
             )
             text_response = message.content[0].text
         elif provider == "Groq":
             client = OpenAI(base_url="[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)", api_key=api_key)
             response = client.chat.completions.create(
-                model=model_id, messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
+                model=model_id, messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": full_prompt}]
             )
             text_response = response.choices[0].message.content
         elif provider == "Grok (xAI)":
             client = OpenAI(base_url="[https://api.x.ai/v1](https://api.x.ai/v1)", api_key=api_key)
             response = client.chat.completions.create(
-                model=model_id, messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
+                model=model_id, messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": full_prompt}]
             )
             text_response = response.choices[0].message.content
         
-        # Parsing JSON
-        try:
-            cleaned_text = clean_json_text(text_response)
-            return json.loads(cleaned_text)
-        except json.JSONDecodeError:
-            # Se fallisce, ritorna errore gestito
-            return [{"titolo": "Errore Formato", "descrizione": f"L'AI non ha risposto in JSON valido.\nRaw: {text_response}"}]
+        # GESTIONE RISPOSTA
+        if json_mode:
+            try:
+                cleaned_text = clean_json_text(text_response)
+                return json.loads(cleaned_text)
+            except json.JSONDecodeError:
+                return [{"titolo": "Errore Formato", "descrizione": f"L'AI non ha risposto in JSON valido.\nRaw: {text_response}"}]
+        else:
+            return text_response # Ritorna testo semplice per Markdown
             
     except Exception as e:
-        return [{"titolo": "Errore API", "descrizione": f"Errore tecnico: {str(e)}"}]
+        if json_mode: return [{"titolo": "Errore API", "descrizione": f"Errore tecnico: {str(e)}"}]
+        else: return f"❌ Errore API: {str(e)}"
 
 # ==============================================================================
 # INTERFACCIA
@@ -233,38 +230,33 @@ with st.expander("📂 Archivio Idee (Database)", expanded=False):
         data = next(i for i in saved if i['Titolo'] == sel_saved)
         if st.button("🔽 Carica in Fase 2"):
             st.session_state.selected_concept = sel_saved
-            # Prepariamo un contesto fittizio per la fase 2
-            st.session_state.assets = "" # Reset asset precedenti
+            st.session_state.assets = "" # Reset
             st.success(f"Caricato: {sel_saved}. Scorri giù.")
 
 # FASE 1
 st.header("Fase 1: Ideazione 💡")
 activity_input = st.text_input("Tema Base", placeholder="Es. Robot Wars...")
 
-# LOGICA BOTTONI
-col_main_btn, _ = st.columns([1, 4])
-if col_main_btn.button("✨ Inventa 3 Idee", type="primary"):
+if st.button("✨ Inventa 3 Idee", type="primary"):
     with st.spinner("Brainstorming..."):
         budget_str = "Libero" if (capex+opex+rrp)==0 else f"Fissi {capex}€, Var {opex}€, Vendita {rrp}€"
         prompt = f"""
         Genera 3 concept distinti per: {activity_input}. 
         Vibe: {vibes_input}. Budget: {budget_str}. 
         Logistica: {tech_level}, {phys_level}, {', '.join(locs)}.
-        Rispondi solo con JSON: [{{ "titolo": "...", "descrizione": "..." }}]
         """
-        response = call_ai(provider, selected_model, api_key, prompt)
+        # CHIAMATA JSON MODE = TRUE
+        response = call_ai(provider, selected_model, api_key, prompt, json_mode=True)
         if isinstance(response, list):
             st.session_state.concepts_list = response
         else:
-            st.error("Errore nel formato AI")
+            st.error("Errore formato AI")
 
-# VISUALIZZAZIONE IDEE (Iterazione con pulsanti)
+# VISUALIZZAZIONE CARD
 if st.session_state.concepts_list:
     st.divider()
-    st.caption("Ecco le idee sfornate. Usa i pulsanti per gestirle.")
+    st.caption("Usa i pulsanti per gestire le idee:")
     
-    # Loop attraverso la lista delle idee salvate in session state
-    # Usiamo enumerate per avere un indice unico per le chiavi dei bottoni
     for idx, concept in enumerate(st.session_state.concepts_list):
         with st.container(border=True):
             st.subheader(f"{idx+1}. {concept.get('titolo', 'Senza Titolo')}")
@@ -275,28 +267,27 @@ if st.session_state.concepts_list:
             # 1. APPROFONDISCI
             if c1.button("🚀 Approfondisci", key=f"app_{idx}"):
                 st.session_state.selected_concept = concept['titolo']
-                st.session_state.assets = "" # Reset fase successiva
+                st.session_state.assets = ""
                 st.success(f"Selezionato: {concept['titolo']}")
             
             # 2. SALVA
             if c2.button("💾 Salva per dopo", key=f"save_{idx}"):
                 res = save_to_gsheet(concept['titolo'], activity_input, vibes_input, f"{provider}", str(concept))
                 if res: st.toast(f"✅ Salvato: {concept['titolo']}")
-                else: st.toast("⚠️ Già presente nel DB")
+                else: st.toast("⚠️ Già nel DB")
 
-            # 3. RIGENERA (SOLO QUESTA IDEA)
+            # 3. RIGENERA
             if c3.button("🔄 Rigenera (Boccia)", key=f"regen_{idx}"):
                 with st.spinner(f"Rimpiazzo l'idea {idx+1}..."):
-                    # Prompt specifico per sostituire solo questa
                     p_regen = f"""
                     L'utente ha scartato l'idea "{concept['titolo']}". 
                     Genera 1 NUOVO concept alternativo per il tema {activity_input}.
-                    Stessi vincoli. Rispondi SOLO JSON: [{{ "titolo": "...", "descrizione": "..." }}]
+                    Stessi vincoli.
                     """
-                    new_concept = call_ai(provider, selected_model, api_key, p_regen)
+                    new_concept = call_ai(provider, selected_model, api_key, p_regen, json_mode=True)
                     if isinstance(new_concept, list) and len(new_concept) > 0:
                         st.session_state.concepts_list[idx] = new_concept[0]
-                        st.rerun() # Ricarica la pagina per mostrare la nuova idea
+                        st.rerun()
 
 # FASE 2
 if st.session_state.selected_concept:
@@ -305,27 +296,18 @@ if st.session_state.selected_concept:
     
     if st.button(f"Genera Scheda Tecnica con {provider}"):
         with st.spinner("Elaborazione tecnica..."):
-            # Qui il prompt può essere testuale normale, non serve JSON
             prompt = f"""
             Scheda tecnica dettagliata per il format: "{st.session_state.selected_concept}".
             Tema: {activity_input}. Vibe: {vibes_input}.
             Output richiesto in Markdown ben formattato.
             NO Acronimi.
             """
-            st.session_state.assets = call_ai(provider, selected_model, api_key, prompt) # Qui potrebbe tornare stringa o json, gestiamo nel call_ai
+            # CHIAMATA JSON MODE = FALSE (Vogliamo testo)
+            st.session_state.assets = call_ai(provider, selected_model, api_key, prompt, json_mode=False)
 
-# Visualizzazione Asset (Fase 2 Output)
 if st.session_state.assets:
-    # Se call_ai ritorna JSON per errore (perché il system prompt è fissato su JSON), 
-    # lo convertiamo in stringa leggibile o forziamo la visualizzazione
-    content_to_show = st.session_state.assets
-    if isinstance(content_to_show, list) or isinstance(content_to_show, dict):
-        content_to_show = str(content_to_show) # Fallback grezzo se torna JSON
-        # Nota: Idealmente dovremmo fare una funzione call_ai_text separata, 
-        # ma per semplicità ora mostriamo quello che arriva.
-    
     with st.expander("📝 VEDI SCHEDA TECNICA", expanded=True):
-        st.markdown(content_to_show)
+        st.markdown(st.session_state.assets)
 
 # FASE 3
 if st.session_state.assets:
@@ -333,16 +315,11 @@ if st.session_state.assets:
     if st.button("Genera Slide"):
         with st.spinner("Writing pitch..."):
             p_pitch = f"Sales pitch per '{st.session_state.selected_concept}'. Target HR. Prezzo {rrp}."
-            # Per il pitch vogliamo testo libero, non JSON.
-            # Trucco: aggiungiamo un override al prompt per ignorare il JSON constraint
-            p_pitch += "\nIGNORA ISTRUZIONI JSON. Rispondi in testo semplice Markdown per le slide."
-            
-            pitch_res = call_ai(provider, selected_model, api_key, p_pitch)
-            # Gestione fallback se torna lista
-            if isinstance(pitch_res, list): pitch_res = str(pitch_res)
+            # CHIAMATA JSON MODE = FALSE
+            pitch_res = call_ai(provider, selected_model, api_key, p_pitch, json_mode=False)
             
             st.markdown(pitch_res)
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.5 (Interactive Cards)")
+st.caption("Timmy Wonka v2.6 (Interactive & Stable) - Powered by Teambuilding.it")
