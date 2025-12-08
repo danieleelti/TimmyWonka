@@ -226,7 +226,7 @@ with st.sidebar:
     
     st.divider()
     
-    # 3. BUDGET (Descrizioni estese)
+    # 3. BUDGET
     st.subheader("3. Budget Control 💰")
     st.caption("Lascia a 0 per nessun limite.")
     capex = st.number_input("Costo una tantum (€)", value=0, help="Costi fissi iniziali (attrezzature, materiali riutilizzabili)")
@@ -359,4 +359,14 @@ if st.session_state.assets:
             """
             response = call_ai(provider, selected_model, api_key, prompt)
             st.markdown(response)
-            st.download_button("
+            
+            # PULSANTE DOWNLOAD
+            st.download_button(
+                label="Scarica Slide (.txt)", 
+                data=response, 
+                file_name="pitch_format.txt",
+                mime="text/plain"
+            )
+
+st.markdown("---")
+st.caption("Timmy Wonka v2.4 (Fix Syntax) - Powered by Teambuilding.it")
