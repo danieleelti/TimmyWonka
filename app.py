@@ -224,8 +224,11 @@ st.divider()
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("🆕 Nuovo Format")
+    
+    # 1. VIBE FIX: Changed to st.text_input
     st.subheader("1. Vibe & Keywords 🎨")
-    vibes_input = st.text_area("Stile", height=100)
+    vibes_input = st.text_input("Stile", placeholder="Lusso, Adrenalinico, Vintage...") 
+    
     st.divider()
     st.subheader("2. Logistica 📦")
     tech_level = st.select_slider("Tech", ["Low", "Hybrid", "High"])
@@ -264,7 +267,7 @@ with st.expander("📂 Archivio Idee (Database)", expanded=False):
 st.header("Fase 1: Ideazione 💡")
 activity_input = st.text_area("Tema Base", placeholder="Es. Robot Wars, La caccia al tesoro...", height=150)
 
-if st.button("✨ Inventa 2 Idee", type="primary"): # CAMBIATO: 2 Idee
+if st.button("✨ Inventa 2 Idee", type="primary"):
     with st.spinner("Brainstorming..."):
         budget_str = "Libero" if (capex+opex+rrp)==0 else f"Fissi {capex}€, Var {opex}€, Vendita {rrp}€"
         prompt = f"""
@@ -285,7 +288,6 @@ if st.session_state.concepts_list:
     
     for idx, concept in enumerate(st.session_state.concepts_list):
         with st.container(border=True):
-            # Utilizziamo .get() con fallback per estrarre il titolo
             concept_title = concept.get('titolo', concept.get('title', 'Senza Titolo'))
             st.subheader(f"{idx+1}. {concept_title}")
             st.markdown(concept.get('descrizione', concept.get('description', ''))
@@ -346,4 +348,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.13 (2 Concepts) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.14 (Vibe Input Fix) - Powered by Teambuilding.it")
