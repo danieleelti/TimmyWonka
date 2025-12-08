@@ -8,6 +8,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import json
 import re
+# NUOVO IMPORTO PER LA FUNZIONE COPIA
+from streamlit_extras.copy_to_clipboard import copy_to_clipboard 
 
 # --- 0. GESTIONE DATABASE (GOOGLE SHEETS) ---
 SHEET_NAME = "TimmyWonka_DB"
@@ -71,7 +73,6 @@ def save_to_gsheet(title, description, vibe, author, full_concept):
                 sheet.append_row(["Titolo", "Tema", "Vibe", "Data", "Autore", "Concept"])
 
             date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-            # Salva solo Titolo, Descrizione (Asset), Vibe, Data
             row = [title, description, vibe, date_str] 
             sheet.append_row(row)
             return True
@@ -177,7 +178,6 @@ def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel(model_id)
             
-            # Per Gemini, si concatena la history (funziona per chat semplici come questa)
             final_prompt = "\n".join([f"[{m['role'].upper()}]: {m['content']}" for m in messages[1:]])
             response = model.generate_content(final_prompt)
             text_response = response.text
@@ -222,7 +222,6 @@ def handle_refinement_turn(comment):
 
     history_messages = st.session_state.phase2_history 
     
-    # Check if the user is asking for a final summary/conclusion
     is_final_summary_request = "riassunto" in comment.lower() or "finale" in comment.lower() or "salvare" in comment.lower()
 
     if is_final_summary_request:
@@ -232,7 +231,6 @@ def handle_refinement_turn(comment):
         L'output deve essere SOLO il documento di riepilogo/conclusione.
         """
     else:
-        # If user asks for modification or new material, the AI should use the full context
         last_prompt = f"""
         Rispondi alla richiesta dell'utente. Se l'utente chiede una modifica alla Scheda Tecnica, ricreala interamente con le revisioni richieste. Se l'utente chiede un nuovo materiale (es. lista di controllo, pitch), produci quel materiale.
         L'output deve essere SOLO il contenuto richiesto in Markdown.
@@ -249,8 +247,6 @@ def handle_refinement_turn(comment):
     )
     
     st.session_state.phase2_history.append(("assistant", new_response))
-
-    # Update st.session_state.assets with the latest full output for saving
     st.session_state.assets = new_response
 
 
@@ -422,7 +418,6 @@ if st.session_state.selected_concept:
     st.header(f"Fase 2: Deep Dive e Refinement 🛠️")
     st.subheader(f"Lavorando su: '{st.session_state.selected_concept}'")
 
-    # 1. LOGICA DI AUTO-GENERAZIONE: Scatta se il flag è True (Approfondisci appena cliccato)
     if st.session_state.autogenerate_assets:
         generate_technical_sheet(
             st.session_state.selected_concept, 
@@ -434,18 +429,17 @@ if st.session_state.selected_concept:
         )
         st.session_state.autogenerate_assets = False 
 
-    # 2. VISUALIZZAZIONE E CHAT CONTROLLER
     if st.session_state.assets:
         
-        st.info(f"L'ultimo output di Timmy Wonka è salvato come asset finale. Per salvarlo, premi il pulsante 'Salva Versione Finale'.")
+        st.info(f"L'ultimo output di Timmy Wonka è salvato come asset finale. Per modificarlo, usa la chat qui sotto.")
         
-        # Scheda Tecnica Attuale (nascosta per default per non ingombrare la chat)
+        # Area visuale dell'ultimo asset
         with st.expander("📝 VEDI ULTIMO ASSET PRODOTTO", expanded=False):
             st.markdown(st.session_state.assets)
 
         st.subheader("Chat di Refinement 💬")
         
-        # Visualizza la history della chat
+        # Visualizzazione Chat
         for role, content in st.session_state.phase2_history:
             if role == "user":
                 st.chat_message("user").markdown(content)
@@ -453,26 +447,26 @@ if st.session_state.selected_concept:
                 st.chat_message("assistant").markdown(content)
 
         # Controlli Chat e Salvataggio
-        col_c, col_s = st.columns([4, 1])
+        col_chat, col_save, col_copy = st.columns([3, 1, 1])
         
-        comment_input = col_c.text_area(
+        comment_input = st.text_area(
             "Chiedi a Timmy Wonka una modifica, un approfondimento o un riassunto finale da salvare:", 
             key="comment_input", 
             height=100
         )
         
-        if col_c.button("💬 Invia Richiesta / Continua la Chat", use_container_width=True):
+        # PULSANTE 1: INVIA RICHIESTA
+        if col_chat.button("💬 Invia Richiesta / Continua la Chat", use_container_width=True):
             if comment_input:
                 with st.spinner("Timmy sta elaborando la richiesta..."):
                     handle_refinement_turn(comment_input) 
-                    
-                    # FIX: Elimina la chiave per pulire il campo di testo senza StreamlitAPIException
-                    del st.session_state.comment_input 
+                    del st.session_state.comment_input
                     st.rerun()
             else:
                 st.warning("Scrivi un commento o una richiesta!")
 
-        if col_s.button("💾 Salva Versione Finale", type="primary", use_container_width=True):
+        # PULSANTE 2: SALVA VERSIONE FINALE
+        if col_save.button("💾 Salva Versione Finale", type="primary", use_container_width=True):
             
             final_title = st.session_state.selected_concept
             final_description = st.session_state.assets 
@@ -488,21 +482,22 @@ if st.session_state.selected_concept:
             
             if res: st.success(f"✅ Versione finale di '{final_title}' salvata nel DB!")
             else: st.error("⚠️ Errore nel salvataggio o idea già presente.")
+            
+        # PULSANTE 3: COPIA NEGLI APPUNTI (Utilizza la funzione della libreria importata)
+        copy_to_clipboard(st.session_state.assets, label="📋 Copia Ultimo Asset", key="copy_final_asset", help="Copia l'intero contenuto della Scheda Tecnica/Riassunto negli appunti")
 
 
 # FASE 3
-# La Fase 3 può essere ancora lanciata basandosi sull'ultimo assets
 if st.session_state.assets:
     st.divider()
     st.header("Fase 3: Sales Pitch 💼")
     if st.button("Genera Slide"):
         with st.spinner("Writing pitch..."):
             p_pitch = f"Sales pitch per '{st.session_state.selected_concept}'. Target HR. Prezzo {rrp}."
-            # Si usa la history attuale per dare contesto al pitch
             pitch_res = call_ai(st.session_state.provider, st.session_state.selected_model, st.session_state.api_key, p_pitch, history=st.session_state.phase2_history, json_mode=False)
             
             st.markdown(pitch_res)
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.27 (Full Chat Refinement) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.28 (Copy to Clipboard) - Powered by Teambuilding.it")
