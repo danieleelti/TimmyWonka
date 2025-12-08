@@ -220,12 +220,10 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
                 if provider == "Google Gemini": models = aiversion.get_gemini_models(api_key)
                 elif provider == "ChatGPT": models = aiversion.get_openai_models(api_key)
                 elif provider == "Claude (Anthropic)": models = aiversion.get_anthropic_models(api_key)
-                # FIX: Fallback manuale per Groq se la lista dinamica fallisce
                 elif provider == "Groq": 
                     try:
                         models = aiversion.get_openai_models(api_key, base_url="[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)")
                     except:
-                        # Fallback a modelli noti e stabili
                         models = ["llama3-8b-8192", "llama3-70b-8192"]
                         st.warning("⚠️ Elenco modelli Groq non disponibile. Caricati modelli standard.")
                 elif provider == "Grok (xAI)": models = aiversion.get_openai_models(api_key, base_url="[https://api.x.ai/v1](https://api.x.ai/v1)")
@@ -243,7 +241,7 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
             
             selected_model = st.selectbox("Versione", models, index=default_index)
         else:
-            selected_model = st.text_input("Versione Manuale (es. llama3-8b-8192)")
+            selected_model = st.text_input("Versione Manuale (es. gemini-1.5-pro)")
 
 st.divider()
 
@@ -251,9 +249,9 @@ st.divider()
 with st.sidebar:
     st.title("🆕 Nuovo Format")
     
+    # 1. VIBE FIX: Reverted to st.text_input (single line) to eliminate Ctrl+Enter
     st.subheader("1. Vibe & Keywords 🎨")
-    vibes_input = st.text_area("Stile", placeholder="Lusso, Adrenalinico, Vintage...", height=100)
-    st.caption("Premi Ctrl+Enter (o Cmd+Enter) per registrare il testo.")
+    vibes_input = st.text_input("Stile", placeholder="Lusso, Adrenalinico, Vintage...") 
     st.divider()
     
     st.subheader("2. Logistica 📦")
@@ -386,4 +384,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.18 (Groq Fix) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.19 (Final Vibe Interaction Fix) - Powered by Teambuilding.it")
