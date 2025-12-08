@@ -2,42 +2,74 @@ import streamlit as st
 import google.generativeai as genai
 from openai import OpenAI
 from anthropic import Anthropic
-import aiversion  # Modulo versioni
-import json
-import os
+import aiversion
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
-# --- 0. GESTIONE DATABASE (JSON LOCALE) ---
-DB_FILE = "db_ideas.json"
+# --- 0. GESTIONE DATABASE (GOOGLE SHEETS) ---
+# Assicurati che il nome qui sotto sia ESATTO come il tuo file Google Sheet
+SHEET_NAME = "TimmyWonka_DB"
 
-def load_db():
-    """Carica il database delle idee o ne crea uno vuoto."""
-    if not os.path.exists(DB_FILE):
-        return []
+def get_db_connection():
+    """Connette al Google Sheet usando i Secrets."""
     try:
-        with open(DB_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return []
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        # Carica credenziali dai secrets
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            
+            # Fix per la private_key se i \n vengono letti male
+            if "\\n" in creds_dict["private_key"]:
+                creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+                
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            client = gspread.authorize(creds)
+            sheet = client.open(SHEET_NAME).sheet1
+            return sheet
+        else:
+            st.error("❌ Manca la configurazione [gcp_service_account] nei Secrets!")
+            return None
+    except Exception as e:
+        st.error(f"❌ Errore connessione Database: {e}")
+        return None
 
-def save_to_db(title, theme, vibe, created_by):
-    """Salva una nuova idea nel database."""
-    ideas = load_db()
-    # Evita duplicati basati sul titolo
-    if any(i['title'] == title for i in ideas):
-        return False # Già esiste
-    
-    new_idea = {
-        "title": title,
-        "theme": theme,
-        "vibe": vibe,
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "created_by": created_by
-    }
-    ideas.append(new_idea)
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(ideas, f, indent=4, ensure_ascii=False)
-    return True
+def load_db_ideas():
+    """Legge tutte le idee dal foglio."""
+    sheet = get_db_connection()
+    if sheet:
+        try:
+            return sheet.get_all_records()
+        except:
+            return []
+    return []
+
+def save_to_gsheet(title, theme, vibe, author, full_concept):
+    """Scrive una nuova riga nel foglio."""
+    sheet = get_db_connection()
+    if sheet:
+        try:
+            # Controlla duplicati
+            try:
+                titles = sheet.col_values(1)
+            except:
+                titles = []
+            
+            if title in titles:
+                return False # Già esiste
+            
+            # Se il foglio è vuoto, aggiunge intestazioni
+            if not titles:
+                sheet.append_row(["Titolo", "Tema", "Vibe", "Data", "Autore", "Concept"])
+
+            date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+            row = [title, theme, vibe, date_str, author, full_concept]
+            sheet.append_row(row)
+            return True
+        except Exception as e:
+            st.error(f"Errore salvataggio: {e}")
+            return False
+    return False
 
 # --- 1. CONFIGURAZIONE PAGINA ---
 st.set_page_config(
@@ -53,7 +85,7 @@ st.markdown("""
     .big-font { font-size:24px !important; font-weight: bold; color: #6C3483; }
     .stButton>button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; }
     .success-box { padding: 10px; background-color: #d4edda; color: #155724; border-radius: 5px; margin-bottom: 10px; font-weight: bold;}
-    .db-box { border: 1px solid #FFD700; padding: 15px; border-radius: 10px; background-color: #fffdf0; margin-bottom: 20px;}
+    .db-box { border: 1px solid #34A853; padding: 15px; border-radius: 10px; background-color: #e6f4ea; margin-bottom: 20px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -65,7 +97,7 @@ def check_password():
     try:
         secret_password = st.secrets["login_password"]
     except (FileNotFoundError, KeyError):
-        st.error("⚠️ ERRORE: Password non configurata nei Secrets!")
+        st.error("⚠️ ERRORE: Configurazione mancante nei Secrets!")
         st.stop()
 
     if "password_input" in st.session_state:
@@ -86,7 +118,7 @@ if not st.session_state.authenticated:
     st.stop()
 
 # ==============================================================================
-# LOGICA INTELLIGENZA ARTIFICIALE
+# LOGICA AI
 # ==============================================================================
 
 SYSTEM_PROMPT = """
@@ -106,79 +138,57 @@ Creativo (Wonka) ma Logisticamente Spietato (Timmy).
 
 def call_ai(provider, model_id, api_key, prompt):
     full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}"
-    
     try:
         if provider == "Google Gemini":
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel(model_id)
             response = model.generate_content(full_prompt)
             return response.text
-
         elif provider == "ChatGPT":
             client = OpenAI(api_key=api_key)
             response = client.chat.completions.create(
-                model=model_id,
-                messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
+                model=model_id, messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
             )
             return response.choices[0].message.content
-
         elif provider == "Claude (Anthropic)":
             client = Anthropic(api_key=api_key)
             message = client.messages.create(
-                model=model_id,
-                max_tokens=4000,
-                system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": prompt}]
+                model=model_id, max_tokens=4000, system=SYSTEM_PROMPT, messages=[{"role": "user", "content": prompt}]
             )
             return message.content[0].text
-
         elif provider == "Groq":
             client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=api_key)
             response = client.chat.completions.create(
-                model=model_id,
-                messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
+                model=model_id, messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
             )
             return response.choices[0].message.content
-            
         elif provider == "Grok (xAI)":
             client = OpenAI(base_url="https://api.x.ai/v1", api_key=api_key)
             response = client.chat.completions.create(
-                model=model_id,
-                messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
+                model=model_id, messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
             )
             return response.choices[0].message.content
-
     except Exception as e:
         return f"❌ ERRORE API ({provider} - {model_id}): {str(e)}"
 
 # ==============================================================================
-# INTERFACCIA UTENTE
+# INTERFACCIA
 # ==============================================================================
 
-# --- SEZIONE SUPERIORE: SETUP AI ---
+# --- SETUP AI ---
 with st.expander("🧠 Configurazione Cervello AI & Versioni", expanded=True):
     col_ai1, col_ai2, col_ai3 = st.columns([1, 1, 2])
-    
     with col_ai1:
         provider = st.selectbox("1. Scegli Provider", ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"])
-
     with col_ai2:
         api_key = ""
-        key_map = {
-            "Google Gemini": "GOOGLE_API_KEY",
-            "ChatGPT": "OPENAI_API_KEY",
-            "Claude (Anthropic)": "ANTHROPIC_API_KEY",
-            "Groq": "GROQ_API_KEY",
-            "Grok (xAI)": "XAI_API_KEY"
-        }
+        key_map = {"Google Gemini": "GOOGLE_API_KEY", "ChatGPT": "OPENAI_API_KEY", "Claude (Anthropic)": "ANTHROPIC_API_KEY", "Groq": "GROQ_API_KEY", "Grok (xAI)": "XAI_API_KEY"}
         secret_key_name = key_map[provider]
         if secret_key_name in st.secrets:
             api_key = st.secrets[secret_key_name]
-            st.markdown(f"<br>✅ **Key Caricata** da Secrets", unsafe_allow_html=True)
+            st.markdown(f"<br>✅ **Key Caricata**", unsafe_allow_html=True)
         else:
-            st.warning(f"Manca {secret_key_name}")
-            api_key = st.text_input("Inserisci API Key manuale", type="password")
-
+            api_key = st.text_input("Inserisci API Key", type="password")
     with col_ai3:
         available_models = []
         if api_key:
@@ -189,160 +199,130 @@ with st.expander("🧠 Configurazione Cervello AI & Versioni", expanded=True):
             elif provider == "Grok (xAI)": available_models = aiversion.get_openai_models(api_key, base_url="https://api.x.ai/v1")
         
         if not available_models or "Errore" in available_models[0]:
-             selected_model = st.text_input("Versione (Inserimento manuale se lista fallisce)")
+             selected_model = st.text_input("Versione (Manuale)")
         else:
-            selected_model = st.selectbox("2. Seleziona Versione Modello", available_models)
+            selected_model = st.selectbox("2. Seleziona Versione", available_models)
 
 st.divider()
 
-# --- SIDEBAR: PARAMETRI & VIBE ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.title("🆕 Nuovo Format")
-    
-    # 1. Vibe & Keywords
     st.subheader("1. Vibe & Keywords 🎨")
-    vibes_input = st.text_area(
-        "Stile & Atmosfera", 
-        placeholder="Es. Lusso, Adrenalinico, Sostenibile, Cyberpunk, Elegante, Competitivo...", 
-        height=150, 
-        help="Aggettivi che definiscono l'atmosfera e lo stile del format."
-    )
-
+    vibes_input = st.text_area("Stile", placeholder="Es. Lusso, Adrenalinico...", height=150)
     st.divider()
-
-    # 2. Budget Control
     st.subheader("2. Budget Control 💰")
-    capex = st.number_input("Costo una tantum (€)", 2000, help="Spese fisse iniziali (es. attrezzatura)")
-    opex = st.number_input("Costo materiali a persona (€)", 15, help="Spese variabili per ogni partecipante")
-    rrp = st.number_input("Costo di vendita a persona (€)", 120, help="Prezzo al cliente finale")
-
+    capex = st.number_input("Costo una tantum (€)", 2000)
+    opex = st.number_input("Costo materiali a persona (€)", 15)
+    rrp = st.number_input("Costo di vendita a persona (€)", 120)
     st.divider()
-
-    # 3. Logistica
     st.subheader("3. Logistica 📦")
-    
     tech_level = st.select_slider("Livello Tech", ["Low Tech", "Hybrid", "High Tech"])
-    phys_level = st.select_slider("Livello Fisico", ["Sedentario (Mental)", "Leggero (Movimento)", "Attivo (Sport)"])
-    location_list = st.multiselect(
-        "Location (Scelta multipla)", 
-        ["Indoor", "Outdoor", "Durante i pasti (Dinner Game)", "Ibrido", "Remoto"],
-        default=["Indoor"]
-    )
+    phys_level = st.select_slider("Livello Fisico", ["Sedentario", "Leggero", "Attivo"])
+    location_list = st.multiselect("Location", ["Indoor", "Outdoor", "Durante i pasti", "Ibrido", "Remoto"], default=["Indoor"])
 
-# --- CORPO PRINCIPALE ---
+# --- MAIN ---
 st.title("🎩💡🎯 Timmy Wonka e la fabbrica dei Format 🏆🧠💰")
-st.caption(f"Motore: {selected_model} | Budget Una Tantum: {capex}€")
+st.caption(f"Motore: {selected_model} | Database: Google Sheets (Persistente)")
 
-# Gestione Stato
-if "phase" not in st.session_state: st.session_state.phase = 1
 if "concepts" not in st.session_state: st.session_state.concepts = ""
 if "selected_concept" not in st.session_state: st.session_state.selected_concept = ""
 if "assets" not in st.session_state: st.session_state.assets = ""
 if "idea_saved" not in st.session_state: st.session_state.idea_saved = False
 
-# --- SEZIONE ARCHIVIO (NUOVO) ---
-# Permette di ricaricare idee vecchie per analizzarle con l'AI corrente
-with st.expander("📂 Archivio Idee Salvate (Database)", expanded=False):
-    saved_ideas = load_db()
+# --- ARCHIVIO GOOGLE SHEETS ---
+with st.expander("📂 Archivio Idee (Google Sheets Cloud)", expanded=False):
+    if st.button("🔄 Aggiorna Lista dal Cloud"):
+        st.rerun()
+        
+    saved_ideas = load_db_ideas()
     if not saved_ideas:
-        st.info("Il database è vuoto. Salva qualche idea dalla Fase 1!")
+        st.info("Database vuoto o non connesso. Assicurati di aver condiviso il foglio con l'email del bot!")
     else:
-        # Crea lista titoli per il selectbox
-        titles = [i['title'] for i in saved_ideas]
+        # Crea lista titoli
+        titles = [i.get('Titolo', 'Senza titolo') for i in saved_ideas if isinstance(i, dict)]
         selected_db_title = st.selectbox("Seleziona un'idea da approfondire:", ["-- Scegli --"] + titles)
         
         if selected_db_title != "-- Scegli --":
-            # Recupera i dati dell'idea
-            idea_data = next(i for i in saved_ideas if i['title'] == selected_db_title)
+            idea_data = next(i for i in saved_ideas if i.get('Titolo') == selected_db_title)
+            st.markdown(f"**Tema:** {idea_data.get('Tema')} | **Vibe:** {idea_data.get('Vibe')}")
+            st.caption(f"Data: {idea_data.get('Data')} | AI usata: {idea_data.get('Autore')}")
             
-            st.markdown(f"**Tema Originale:** {idea_data['theme']} | **Vibe:** {idea_data['vibe']}")
-            st.caption(f"Salvata il: {idea_data['date']} | Creata da: {idea_data.get('created_by', 'AI')}")
-            
-            if st.button("🔽 Carica questa Idea per Approfondimento"):
-                st.session_state.selected_concept = idea_data['title']
-                # Precarichiamo anche i vibe originali se l'utente vuole coerenza
-                # st.session_state.vibes_input = idea_data['vibe'] 
-                st.success(f"Caricato: {idea_data['title']}. Ora scorri giù alla Fase 2!")
+            if st.button("🔽 Carica per Approfondimento"):
+                st.session_state.selected_concept = idea_data.get('Titolo')
+                st.success(f"Caricato: {idea_data.get('Titolo')}")
 
-# --- FASE 1: IDEAZIONE ---
+# FASE 1
 st.header("Fase 1: Ideazione Concept 💡")
-activity_input = st.text_input("Tema Base dell'Attività", placeholder="Es. Cena con delitto, Robot Wars, Cooking Class...")
+activity_input = st.text_input("Tema Base dell'Attività", placeholder="Es. Cena con delitto...")
 
 if st.button("Inventa 3 Concept", type="primary"):
-    with st.spinner(f"Timmy ({selected_model}) sta elaborando con stile: {vibes_input}..."):
+    with st.spinner(f"Timmy ({selected_model}) sta elaborando..."):
         loc_str = ", ".join(location_list) if location_list else "Qualsiasi"
         prompt = f"""
-        ESEGUI FASE 1. 
-        Tema Base: {activity_input}
-        VIBE: {vibes_input if vibes_input else "Standard creativo"}
-        Budget: CAPEX {capex}€, OPEX {opex}€/pax, RRP {rrp}€/pax
-        Logistica: Tech {tech_level}, Fisicità {phys_level}, Location {loc_str}
+        ESEGUI FASE 1. Tema: {activity_input}, Vibe: {vibes_input}
+        Budget: CAPEX {capex}€, OPEX {opex}€, RRP {rrp}€. 
+        Logistica: Tech {tech_level}, Fisicità {phys_level}, Loc {loc_str}.
         Dammi 3 concept distinti.
         """
         response = call_ai(provider, selected_model, api_key, prompt)
         st.session_state.concepts = response
-        st.session_state.idea_saved = False # Reset stato salvataggio
+        st.session_state.idea_saved = False
 
 if st.session_state.concepts:
     st.markdown(st.session_state.concepts)
     st.divider()
-    
     col_sel1, col_sel2 = st.columns([3, 1])
     with col_sel1:
-        st.info("Copia qui sotto il titolo del concept che ti piace:")
-        st.session_state.selected_concept = st.text_input("Titolo Concept Scelto", value=st.session_state.selected_concept)
-    
-    # PULSANTE SALVA IDEA
+        st.info("Copia qui sotto il titolo del concept:")
+        st.session_state.selected_concept = st.text_input("Titolo Scelto", value=st.session_state.selected_concept)
     with col_sel2:
-        st.markdown("<br>", unsafe_allow_html=True) # Spaziatura
+        st.markdown("<br>", unsafe_allow_html=True)
         if st.session_state.selected_concept and not st.session_state.idea_saved:
-            if st.button("💾 Salva nel DB"):
-                success = save_to_db(st.session_state.selected_concept, activity_input, vibes_input, selected_model)
-                if success:
-                    st.success("Salvata!")
-                    st.session_state.idea_saved = True
-                else:
-                    st.warning("Già presente!")
+            if st.button("☁️ Salva su Google Sheet"):
+                with st.spinner("Salvataggio in corso..."):
+                    success = save_to_gsheet(
+                        st.session_state.selected_concept, 
+                        activity_input, 
+                        vibes_input, 
+                        f"{provider} ({selected_model})",
+                        st.session_state.concepts
+                    )
+                    if success:
+                        st.success("Salvato!")
+                        st.session_state.idea_saved = True
+                    else:
+                        st.warning("Errore o Già Presente!")
         elif st.session_state.idea_saved:
-            st.button("✅ Idea in Archivio", disabled=True)
+             st.button("✅ Archiviato", disabled=True)
 
-# --- FASE 2: PRODUZIONE (Deep Dive) ---
+# FASE 2
 if st.session_state.selected_concept:
-    st.header("Fase 2: Scheda Tecnica & Deep Dive 🛠️")
-    st.markdown(f"Stai lavorando su: **{st.session_state.selected_concept}**")
-    
-    # Messaggio che spiega la funzionalità multi-AI
-    st.info(f"💡 Suggerimento: Puoi cambiare l'AI nel pannello in alto (es. da GPT a Claude) e cliccare il pulsante qui sotto per vedere come un'altra intelligenza sviluppa la stessa idea.")
-    
-    # Pulsante Dinamico
+    st.header("Fase 2: Scheda Tecnica 🛠️")
+    st.markdown(f"Lavorando su: **{st.session_state.selected_concept}**")
     btn_label = f"🚀 Approfondisci con {provider} ({selected_model})"
-    
     if st.button(btn_label):
-        with st.spinner(f"Timmy ({selected_model}) sta progettando il format..."):
+        with st.spinner("Progettazione..."):
             prompt = f"""
-            ESEGUI FASE 2 per: "{st.session_state.selected_concept}". 
-            Tema Originale: {activity_input}. Vibe: {vibes_input}.
+            ESEGUI FASE 2 per: "{st.session_state.selected_concept}". Tema: {activity_input}. Vibe: {vibes_input}.
             Output: SCHEDA TECNICA COMPLETA.
             """
             response = call_ai(provider, selected_model, api_key, prompt)
             st.session_state.assets = response
 
 if st.session_state.assets:
-    with st.expander("📂 VEDI SCHEDA TECNICA COMPLETA", expanded=True):
+    with st.expander("📂 VEDI SCHEDA TECNICA", expanded=True):
         st.markdown(st.session_state.assets)
 
-# --- FASE 3: VENDITA ---
+# FASE 3
 if st.session_state.assets:
     st.header("Fase 3: Sales Pitch 💼")
-    if st.button("Genera Slide di Vendita"):
-        with st.spinner(f"Creazione pitch con {selected_model}..."):
-            prompt = f"""
-            ESEGUI FASE 3 per: "{st.session_state.selected_concept}". Target: HR. Prezzo: {rrp}€. Vibe: {vibes_input}.
-            Crea testo per 6 Slide.
-            """
+    if st.button("Genera Slide"):
+        with st.spinner("Creazione pitch..."):
+            prompt = f"ESEGUI FASE 3 per: '{st.session_state.selected_concept}'. Target: HR. Prezzo: {rrp}€. Vibe: {vibes_input}."
             response = call_ai(provider, selected_model, api_key, prompt)
             st.markdown(response)
-            st.download_button("Scarica Slide (.txt)", data=response, file_name=f"Pitch_{st.session_state.selected_concept}.txt")
+            st.download_button("Scarica Slide (.txt)", data=response, file_name="pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v1.9 - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.0 (Cloud Edition) - Powered by Teambuilding.it")
