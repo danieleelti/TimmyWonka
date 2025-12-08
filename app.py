@@ -15,8 +15,10 @@ SHEET_NAME = "TimmyWonka_DB"
 def get_db_connection():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        # Controllo se esiste la chiave del service account
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
+            # Fix per i newline nelle chiavi private
             if "\\n" in creds_dict["private_key"]:
                 creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
@@ -25,7 +27,8 @@ def get_db_connection():
             return sheet
         return None
     except Exception as e:
-        st.error(f"❌ Errore DB: {e}")
+        # Errore silenzioso o print in console per non sporcare l'interfaccia
+        print(f"DB Connection Error: {e}")
         return None
 
 def load_db_ideas():
@@ -77,20 +80,23 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. GESTIONE SICUREZZA ---
+# --- 2. GESTIONE SICUREZZA (FIXED) ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
+# Controllo Esplicito: La password esiste nei secrets?
+if "login_password" not in st.secrets:
+    st.error("⚠️ Configurazione Errata: Manca la chiave 'login_password' nel file secrets.toml.")
+    st.info("Aggiungi: login_password = \"LaTuaPassword\" nei secrets.")
+    st.stop()
+
 def check_password():
-    try:
-        secret = st.secrets["login_password"]
-        if st.session_state.password_input == secret:
-            st.session_state.authenticated = True
-            del st.session_state.password_input
-        else:
-            st.error("🚫 Password Errata.")
-    except:
-        st.error("⚠️ Configurazione mancante.")
+    # Nessun try/except qui, se la chiave manca deve averla beccata il controllo sopra
+    if st.session_state.password_input == st.secrets["login_password"]:
+        st.session_state.authenticated = True
+        del st.session_state.password_input
+    else:
+        st.error("🚫 Password Errata.")
 
 if not st.session_state.authenticated:
     st.markdown("<br><br>", unsafe_allow_html=True)
@@ -102,7 +108,7 @@ if not st.session_state.authenticated:
     st.stop()
 
 # ==============================================================================
-# LOGICA AI (HYBRID MODE: JSON + TEXT)
+# LOGICA AI
 # ==============================================================================
 
 SYSTEM_PROMPT = """
@@ -119,7 +125,6 @@ def clean_json_text(text):
     return text.strip()
 
 def call_ai(provider, model_id, api_key, prompt, json_mode=False):
-    # Se serve JSON, aggiungiamo istruzioni forti al prompt
     if json_mode:
         full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}\n\nRISPONDI SOLO CON UN ARRAY JSON VALIDO: [{{...}}, {{...}}]. Niente testo extra."
     else:
@@ -157,7 +162,6 @@ def call_ai(provider, model_id, api_key, prompt, json_mode=False):
             )
             text_response = response.choices[0].message.content
         
-        # GESTIONE RISPOSTA
         if json_mode:
             try:
                 cleaned_text = clean_json_text(text_response)
@@ -165,7 +169,7 @@ def call_ai(provider, model_id, api_key, prompt, json_mode=False):
             except json.JSONDecodeError:
                 return [{"titolo": "Errore Formato", "descrizione": f"L'AI non ha risposto in JSON valido.\nRaw: {text_response}"}]
         else:
-            return text_response # Ritorna testo semplice per Markdown
+            return text_response
             
     except Exception as e:
         if json_mode: return [{"titolo": "Errore API", "descrizione": f"Errore tecnico: {str(e)}"}]
@@ -178,21 +182,37 @@ def call_ai(provider, model_id, api_key, prompt, json_mode=False):
 # --- SETUP ---
 with st.expander("🧠 Configurazione Cervello AI", expanded=True):
     c1, c2, c3 = st.columns([1, 1, 2])
-    with c1: provider = st.selectbox("Provider", ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"])
+    with c1: 
+        provider = st.selectbox("Provider", ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"])
+    
     with c2:
+        # LOGICA FIXATA: Se la chiave è nei secrets, la usa. Altrimenti mostra input.
         key_map = {"Google Gemini": "GOOGLE_API_KEY", "ChatGPT": "OPENAI_API_KEY", "Claude (Anthropic)": "ANTHROPIC_API_KEY", "Groq": "GROQ_API_KEY", "Grok (xAI)": "XAI_API_KEY"}
-        api_key = st.secrets.get(key_map[provider], st.text_input("API Key", type="password"))
-    with c3:
-        if api_key:
-            if provider == "Google Gemini": models = aiversion.get_gemini_models(api_key)
-            elif provider == "ChatGPT": models = aiversion.get_openai_models(api_key)
-            elif provider == "Claude (Anthropic)": models = aiversion.get_anthropic_models(api_key)
-            elif provider == "Groq": models = aiversion.get_openai_models(api_key, base_url="[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)")
-            elif provider == "Grok (xAI)": models = aiversion.get_openai_models(api_key, base_url="[https://api.x.ai/v1](https://api.x.ai/v1)")
-            else: models = []
-        else: models = []
+        secret_key_name = key_map[provider]
         
-        selected_model = st.selectbox("Versione", models) if models and "Errore" not in models[0] else st.text_input("Versione Manuale")
+        if secret_key_name in st.secrets:
+            api_key = st.secrets[secret_key_name]
+            # Un piccolo indicatore visivo (opzionale) che la chiave è caricata
+            st.success("🔑 Key caricata da Secrets", icon="✅")
+        else:
+            api_key = st.text_input("Inserisci API Key", type="password")
+
+    with c3:
+        models = []
+        if api_key:
+            try:
+                if provider == "Google Gemini": models = aiversion.get_gemini_models(api_key)
+                elif provider == "ChatGPT": models = aiversion.get_openai_models(api_key)
+                elif provider == "Claude (Anthropic)": models = aiversion.get_anthropic_models(api_key)
+                elif provider == "Groq": models = aiversion.get_openai_models(api_key, base_url="[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)")
+                elif provider == "Grok (xAI)": models = aiversion.get_openai_models(api_key, base_url="[https://api.x.ai/v1](https://api.x.ai/v1)")
+            except:
+                models = []
+        
+        if models and "Errore" not in models[0]:
+            selected_model = st.selectbox("Versione", models)
+        else:
+            selected_model = st.text_input("Versione Manuale (es. gemini-1.5-pro)")
 
 st.divider()
 
@@ -224,14 +244,16 @@ st.title("🦁 Timmy Wonka R&D")
 with st.expander("📂 Archivio Idee (Database)", expanded=False):
     if st.button("🔄 Aggiorna DB"): st.rerun()
     saved = load_db_ideas()
-    titles = [i['Titolo'] for i in saved if isinstance(i, dict) and 'Titolo' in i]
-    sel_saved = st.selectbox("Carica idea salvata:", ["-- Scegli --"] + titles)
-    if sel_saved != "-- Scegli --":
-        data = next(i for i in saved if i['Titolo'] == sel_saved)
-        if st.button("🔽 Carica in Fase 2"):
-            st.session_state.selected_concept = sel_saved
-            st.session_state.assets = "" # Reset
-            st.success(f"Caricato: {sel_saved}. Scorri giù.")
+    if not saved:
+        st.info("Nessuna idea salvata o Database non connesso.")
+    else:
+        titles = [i['Titolo'] for i in saved if isinstance(i, dict) and 'Titolo' in i]
+        sel_saved = st.selectbox("Carica idea salvata:", ["-- Scegli --"] + titles)
+        if sel_saved != "-- Scegli --":
+            if st.button("🔽 Carica in Fase 2"):
+                st.session_state.selected_concept = sel_saved
+                st.session_state.assets = ""
+                st.success(f"Caricato: {sel_saved}. Scorri giù.")
 
 # FASE 1
 st.header("Fase 1: Ideazione 💡")
@@ -245,12 +267,11 @@ if st.button("✨ Inventa 3 Idee", type="primary"):
         Vibe: {vibes_input}. Budget: {budget_str}. 
         Logistica: {tech_level}, {phys_level}, {', '.join(locs)}.
         """
-        # CHIAMATA JSON MODE = TRUE
         response = call_ai(provider, selected_model, api_key, prompt, json_mode=True)
         if isinstance(response, list):
             st.session_state.concepts_list = response
         else:
-            st.error("Errore formato AI")
+            st.error("Errore formato AI: " + str(response))
 
 # VISUALIZZAZIONE CARD
 if st.session_state.concepts_list:
@@ -264,19 +285,16 @@ if st.session_state.concepts_list:
             
             c1, c2, c3 = st.columns([1, 1, 1])
             
-            # 1. APPROFONDISCI
             if c1.button("🚀 Approfondisci", key=f"app_{idx}"):
                 st.session_state.selected_concept = concept['titolo']
                 st.session_state.assets = ""
                 st.success(f"Selezionato: {concept['titolo']}")
             
-            # 2. SALVA
             if c2.button("💾 Salva per dopo", key=f"save_{idx}"):
                 res = save_to_gsheet(concept['titolo'], activity_input, vibes_input, f"{provider}", str(concept))
                 if res: st.toast(f"✅ Salvato: {concept['titolo']}")
                 else: st.toast("⚠️ Già nel DB")
 
-            # 3. RIGENERA
             if c3.button("🔄 Rigenera (Boccia)", key=f"regen_{idx}"):
                 with st.spinner(f"Rimpiazzo l'idea {idx+1}..."):
                     p_regen = f"""
@@ -302,7 +320,6 @@ if st.session_state.selected_concept:
             Output richiesto in Markdown ben formattato.
             NO Acronimi.
             """
-            # CHIAMATA JSON MODE = FALSE (Vogliamo testo)
             st.session_state.assets = call_ai(provider, selected_model, api_key, prompt, json_mode=False)
 
 if st.session_state.assets:
@@ -315,11 +332,10 @@ if st.session_state.assets:
     if st.button("Genera Slide"):
         with st.spinner("Writing pitch..."):
             p_pitch = f"Sales pitch per '{st.session_state.selected_concept}'. Target HR. Prezzo {rrp}."
-            # CHIAMATA JSON MODE = FALSE
             pitch_res = call_ai(provider, selected_model, api_key, p_pitch, json_mode=False)
             
             st.markdown(pitch_res)
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.6 (Interactive & Stable) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.7 (Fixed & Secure) - Powered by Teambuilding.it")
