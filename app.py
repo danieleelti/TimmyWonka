@@ -225,11 +225,12 @@ st.divider()
 with st.sidebar:
     st.title("🆕 Nuovo Format")
     
-    # 1. VIBE FIX: Changed to st.text_input
+    # 1. VIBE FIX: Reverted to text_area with height for multi-line visual space
     st.subheader("1. Vibe & Keywords 🎨")
-    vibes_input = st.text_input("Stile", placeholder="Lusso, Adrenalinico, Vintage...") 
-    
+    vibes_input = st.text_area("Stile", placeholder="Lusso, Adrenalinico, Vintage...", height=100)
+    st.caption("Premi Ctrl+Enter (o Cmd+Enter) per registrare il testo.")
     st.divider()
+    
     st.subheader("2. Logistica 📦")
     tech_level = st.select_slider("Tech", ["Low", "Hybrid", "High"])
     phys_level = st.select_slider("Fisicità", ["Sedentario", "Leggero", "Attivo"])
@@ -348,4 +349,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.14 (Vibe Input Fix) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.15 (Vibe Textarea Reverted + Instruction) - Powered by Teambuilding.it")
