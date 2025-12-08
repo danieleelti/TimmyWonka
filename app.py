@@ -206,7 +206,6 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
             except:
                 models = []
         
-        # LOGICA PER DEFAULT MODEL
         default_index = 0
         if models and "Errore" not in models[0]:
             if provider == "Google Gemini":
@@ -263,7 +262,6 @@ with st.expander("📂 Archivio Idee (Database)", expanded=False):
 
 # FASE 1
 st.header("Fase 1: Ideazione 💡")
-# CAMPO PRINCIPALE A TEXT_AREA (5+ righe)
 activity_input = st.text_area("Tema Base", placeholder="Es. Robot Wars, La caccia al tesoro...", height=150)
 
 if st.button("✨ Inventa 3 Idee", type="primary"):
@@ -287,25 +285,31 @@ if st.session_state.concepts_list:
     
     for idx, concept in enumerate(st.session_state.concepts_list):
         with st.container(border=True):
-            st.subheader(f"{idx+1}. {concept.get('titolo', 'Senza Titolo')}")
-            st.markdown(concept.get('descrizione', ''))
+            # Utilizziamo .get() con fallback per evitare KeyError durante la visualizzazione
+            concept_title = concept.get('titolo', concept.get('title', 'Senza Titolo'))
+            st.subheader(f"{idx+1}. {concept_title}")
+            st.markdown(concept.get('descrizione', concept.get('description', ''))
+)
             
             c1, c2, c3 = st.columns([1, 1, 1])
             
+            # 1. APPROFONDISCI
             if c1.button("🚀 Approfondisci", key=f"app_{idx}"):
-                st.session_state.selected_concept = concept['titolo']
+                st.session_state.selected_concept = concept_title
                 st.session_state.assets = ""
-                st.success(f"Selezionato: {concept['titolo']}")
+                st.success(f"Selezionato: {concept_title}")
             
+            # 2. SALVA
             if c2.button("💾 Salva per dopo", key=f"save_{idx}"):
-                res = save_to_gsheet(concept['titolo'], activity_input, vibes_input, f"{provider}", str(concept))
-                if res: st.toast(f"✅ Salvato: {concept['titolo']}")
+                res = save_to_gsheet(concept_title, activity_input, vibes_input, f"{provider}", str(concept))
+                if res: st.toast(f"✅ Salvato: {concept_title}")
                 else: st.toast("⚠️ Già nel DB")
 
+            # 3. RIGENERA (FIXED: usa la variabile concept_title)
             if c3.button("🔄 Rigenera (Boccia)", key=f"regen_{idx}"):
                 with st.spinner(f"Rimpiazzo l'idea {idx+1}..."):
                     p_regen = f"""
-                    L'utente ha scartato l'idea "{concept['titolo']}". 
+                    L'utente ha scartato l'idea "{concept_title}". 
                     Genera 1 NUOVO concept alternativo per il tema {activity_input}.
                     Stessi vincoli.
                     """
@@ -345,4 +349,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.11 (Large Main Prompt) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.12 (KeyError Fix) - Powered by Teambuilding.it")
