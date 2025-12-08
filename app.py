@@ -188,13 +188,11 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
         provider = st.selectbox("Provider", ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"])
     
     with c2:
-        # LOGICA FIXATA: Se la chiave è nei secrets, la usa SILENZIOSAMENTE. Altrimenti mostra input.
         key_map = {"Google Gemini": "GOOGLE_API_KEY", "ChatGPT": "OPENAI_API_KEY", "Claude (Anthropic)": "ANTHROPIC_API_KEY", "Groq": "GROQ_API_KEY", "Grok (xAI)": "XAI_API_KEY"}
         secret_key_name = key_map[provider]
         
         if secret_key_name in st.secrets:
             api_key = st.secrets[secret_key_name]
-            # MESSAGGIO RIMOSSO! (Era qui il st.success)
         else:
             api_key = st.text_input("Inserisci API Key", type="password")
 
@@ -210,8 +208,18 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
             except:
                 models = []
         
+        # LOGICA PER DEFAULT MODEL
+        default_index = 0
         if models and "Errore" not in models[0]:
-            selected_model = st.selectbox("Versione", models)
+            if provider == "Google Gemini":
+                default_model_name = "gemini-3-pro-preview"
+                try:
+                    default_index = models.index(default_model_name)
+                except ValueError:
+                    # Se il modello Pro non è disponibile, usa il primo della lista (che di solito è Flash)
+                    pass 
+            
+            selected_model = st.selectbox("Versione", models, index=default_index)
         else:
             selected_model = st.text_input("Versione Manuale (es. gemini-1.5-pro)")
 
@@ -339,4 +347,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.9 (Hidden Key Confirmation) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.10 (Gemini Default Fix) - Powered by Teambuilding.it")
