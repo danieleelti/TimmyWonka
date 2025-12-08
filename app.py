@@ -345,4 +345,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.5 (Interactive Cards)" - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.5 (Interactive Cards)")
