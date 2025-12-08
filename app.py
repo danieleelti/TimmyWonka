@@ -8,7 +8,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import json
 import re
-from streamlit_extras.copy_to_clipboard import copy_to_clipboard 
+# RIGA RIMOSSA: from streamlit_extras.copy_to_clipboard import copy_to_clipboard 
 
 # --- FUNZIONE HELPER PER IL NOME DEL FILE ---
 def sanitize_filename(title):
@@ -160,14 +160,7 @@ def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
     messages.append({"role": "user", "content": prompt})
     
     if json_mode:
-        # ISTRUZIONE RAFFORZATA per output JSON
-        json_instruction = """
-        RISPONDI ESCLUSIVAMENTE CON UN ARRAY JSON VALIDO con esattamente 2 oggetti. 
-        NON includere testo introduttivo, commenti, o delimitatori di codice (```json). 
-        Il tuo output DEVE iniziare e finire con le parentesi quadre dell'array JSON [].
-        [{"titolo":"...", "descrizione":"..."}].
-        """
-        messages[-1]["content"] += "\n" + json_instruction
+        messages[-1]["content"] += "\nRISPONDI SOLO CON UN ARRAY JSON VALIDO: [{{'titolo':'...', 'descrizione':'...'}}]. Niente testo extra."
 
 
     try:
@@ -175,8 +168,8 @@ def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
         
         if provider in ["ChatGPT", "Groq", "Grok (xAI)"]:
             base_url = None
-            if provider == "Groq": base_url="https://api.groq.com/openai/v1"
-            elif provider == "Grok (xAI)": base_url="https://api.x.ai/v1"
+            if provider == "Groq": base_url="[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)"
+            elif provider == "Grok (xAI)": base_url="[https://api.x.ai/v1](https://api.x.ai/v1)"
             
             client = OpenAI(api_key=api_key, base_url=base_url)
             response = client.chat.completions.create(
@@ -253,7 +246,7 @@ def handle_refinement_turn(comment):
         last_prompt = f"""
         Rispondi alla richiesta dell'utente. Se l'utente chiede una modifica alla Scheda Tecnica, ricreala interamente con le revisioni richieste. Se l'utente chiede un nuovo materiale (es. lista di controllo, pitch), produci quel materiale.
         L'output deve essere SOLO il contenuto richiesto in Markdown.
-        MANTIENI IL FOCUS SULLE DINAMICHE: NON INCLUDERE COSTI O ANALISI FINANCIARIE.
+        MANTIENI IL FOCUS SULLE DINAMICHE: NON INCLUDERE COSTI O ANALISI FINANZIARIE.
         """
     
     new_response = call_ai(
@@ -299,11 +292,11 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
                 elif provider == "Claude (Anthropic)": models = aiversion.get_anthropic_models(api_key)
                 elif provider == "Groq": 
                     try:
-                        models = aiversion.get_openai_models(api_key, base_url="https://api.groq.com/openai/v1")
+                        models = aiversion.get_openai_models(api_key, base_url="[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)")
                     except:
                         models = ["llama3-8b-8192", "llama3-70b-8192"]
                         st.warning("⚠️ Elenco modelli Groq non disponibile. Caricati modelli standard.")
-                elif provider == "Grok (xAI)": models = aiversion.get_openai_models(api_key, base_url="https://api.x.ai/v1")
+                elif provider == "Grok (xAI)": models = aiversion.get_openai_models(api_key, base_url="[https://api.x.ai/v1](https://api.x.ai/v1)")
             except:
                 models = []
         
@@ -523,4 +516,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, file_name_pitch)
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.31 (Definitive Module Fix) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.32 (Definitive Module Fix) - Powered by Teambuilding.it")
