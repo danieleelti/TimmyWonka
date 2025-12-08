@@ -122,8 +122,8 @@ IL TUO COMPITO:
 Sviluppare format di team building reali, scalabili e ad alto margine.
 
 REGOLE SUL BUDGET:
-- Rispetta RIGOROSAMENTE i limiti di budget forniti (Costi fissi e variabili).
-- Calcola sempre se il prezzo di vendita copre i costi e garantisce margine.
+- Se non specificati, ignora i vincoli economici e punta sulla massima creatività.
+- Se specificati, rispetta RIGOROSAMENTE i limiti di CAPEX e OPEX.
 
 TONO:
 Creativo (Wonka) ma Logisticamente Spietato (Timmy).
@@ -179,7 +179,6 @@ with st.expander("🧠 Configurazione Cervello AI & Versioni", expanded=True):
         secret_key_name = key_map[provider]
         if secret_key_name in st.secrets:
             api_key = st.secrets[secret_key_name]
-            # NESSUN MESSAGGIO VISIVO QUI (Chiave caricata silenziosamente)
         else:
             api_key = st.text_input("Inserisci API Key", type="password")
     with col_ai3:
@@ -198,34 +197,37 @@ with st.expander("🧠 Configurazione Cervello AI & Versioni", expanded=True):
 
 st.divider()
 
-# --- SIDEBAR ---
+# --- SIDEBAR RIORGANIZZATA ---
 with st.sidebar:
     st.title("🆕 Nuovo Format")
     
+    # 1. VIBE
     st.subheader("1. Vibe & Keywords 🎨")
     vibes_input = st.text_area("Stile", placeholder="Es. Lusso, Adrenalinico...", height=150)
     
     st.divider()
     
-    st.subheader("2. Budget Control 💰")
-    capex = st.number_input("Costo una tantum (€)", 2000)
-    opex = st.number_input("Costo materiali a persona (€)", 15)
-    rrp = st.number_input("Costo di vendita a persona (€)", 120)
-    
-    st.divider()
-    
-    st.subheader("3. Logistica 📦")
+    # 2. LOGISTICA (Spostata SOPRA il budget)
+    st.subheader("2. Logistica 📦")
     tech_level = st.select_slider("Livello Tech", ["Low Tech", "Hybrid", "High Tech"])
     phys_level = st.select_slider("Livello Fisico", ["Sedentario", "Leggero", "Attivo"])
     
     st.markdown("**Location (Seleziona):**")
     location_list = []
-    # CHECKBOX INVECE DI MULTISELECT
     if st.checkbox("Indoor", value=True): location_list.append("Indoor")
     if st.checkbox("Outdoor"): location_list.append("Outdoor")
     if st.checkbox("Durante i pasti (Dinner Game)"): location_list.append("Durante i pasti (Dinner Game)")
     if st.checkbox("Ibrido"): location_list.append("Ibrido")
     if st.checkbox("Remoto"): location_list.append("Remoto")
+    
+    st.divider()
+    
+    # 3. BUDGET (Modificato: Parte da 0)
+    st.subheader("3. Budget Control 💰")
+    st.caption("Lascia a 0 per nessun limite.")
+    capex = st.number_input("Costo una tantum (€)", value=0)
+    opex = st.number_input("Costo materiali a persona (€)", value=0)
+    rrp = st.number_input("Costo di vendita a persona (€)", value=0)
 
 # --- MAIN ---
 st.title("🎩💡🎯 Timmy Wonka e la fabbrica dei Format 🏆🧠💰")
@@ -263,11 +265,28 @@ activity_input = st.text_input("Tema Base dell'Attività", placeholder="Es. Cena
 
 if st.button("Inventa 3 Concept", type="primary"):
     with st.spinner(f"Timmy ({selected_model}) sta elaborando..."):
+        # Costruzione stringa location
         loc_str = ", ".join(location_list) if location_list else "Qualsiasi"
+        
+        # LOGICA BUDGET INTELLIGENTE
+        if capex == 0 and opex == 0 and rrp == 0:
+            budget_str = "NESSUN VINCOLO DI BUDGET (Open Budget). Ignora i costi e focalizzati sulla creatività pura."
+        else:
+            budget_str = f"VINCOLI DI BUDGET ATTIVI: CAPEX Max {capex}€, OPEX Max {opex}€/pax, Prezzo Vendita Target {rrp}€/pax."
+
         prompt = f"""
-        ESEGUI FASE 1. Tema: {activity_input}, Vibe: {vibes_input}
-        Budget: CAPEX {capex}€, OPEX {opex}€, RRP {rrp}€. 
-        Logistica: Tech {tech_level}, Fisicità {phys_level}, Loc {loc_str}.
+        ESEGUI FASE 1. 
+        Tema: {activity_input}
+        Vibe: {vibes_input if vibes_input else "Libero"}
+        
+        BUDGET: 
+        {budget_str}
+        
+        LOGISTICA: 
+        Tech: {tech_level}
+        Fisicità: {phys_level}
+        Location supportate: {loc_str}.
+        
         Dammi 3 concept distinti.
         """
         response = call_ai(provider, selected_model, api_key, prompt)
@@ -330,4 +349,4 @@ if st.session_state.assets:
             st.download_button("Scarica Slide (.txt)", data=response, file_name="pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.1 (Cloud Edition) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.2 (Cloud Edition) - Powered by Teambuilding.it")
