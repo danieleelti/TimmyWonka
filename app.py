@@ -22,7 +22,7 @@ CATALOG_SHEET_TITLE = "CatalogoCompleto"
 def get_db_connection(worksheet_index=0):
     """Restituisce la connessione a una specifica scheda."""
     try:
-        scope = ["[https://spreadsheets.google.com/feeds](https://spreadsheets.google.com/feeds)", "[https://www.googleapis.com/auth/drive](https://www.googleapis.com/auth/drive)"]
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
             if "\\n" in creds_dict["private_key"]:
@@ -44,9 +44,11 @@ def load_db_ideas():
             return []
     return []
 
+@st.cache_data(ttl=3600)
 def load_catalog_titles():
-    """Carica solo Titoli e Temi dal Catalogo Completo per il prompt AI."""
+    """Carica solo Titoli e Temi dal Catalogo Completo (Caching attivo)."""
     try:
+        # Assumiamo indice 1 per CatalogoCompleto (seconda scheda)
         sheet = get_db_connection(worksheet_index=1) 
         if sheet:
             titles = sheet.col_values(1)[1:] if sheet.col_values(1) else []
@@ -58,7 +60,7 @@ def load_catalog_titles():
         return []
     except Exception as e:
         print(f"Errore caricamento Catalogo: {e}")
-        return None
+        return []
 
 
 def save_to_gsheet(title, description, vibe, author, full_concept):
@@ -144,13 +146,11 @@ IMPORTANTE: Non usare mai acronimi tecnici (Capex/Opex) nelle risposte. Usa "Cos
 def clean_json_text(text):
     text = text.strip()
     
-    # 1. Gestione Fences Markdown (esistente)
     if text.startswith("```"):
         text = re.sub(r"^```(json)?", "", text)
         text = re.sub(r"```$", "", text)
         text = text.strip()
         
-    # 2. Gestione Delimitatori Custom (NUOVO per Claude)
     start_tag = "###OUTPUT_JSON_START###"
     end_tag = "###OUTPUT_JSON_END###"
     
@@ -173,7 +173,6 @@ def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
     messages.append({"role": "user", "content": prompt})
     
     if json_mode:
-        # ISTRUZIONE RAFFORZATA con delimitatori custom
         json_instruction = """
         RISPONDI ESCLUSIVAMENTE CON UN ARRAY JSON VALIDO con esattamente 2 oggetti. 
         IL TUO OUTPUT DEVE ESSERE RACCHIUSO ESATTAMENTE TRA I DELIMITATORI: ###OUTPUT_JSON_START### e ###OUTPUT_JSON_END###.
@@ -187,8 +186,8 @@ def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
         
         if provider in ["ChatGPT", "Groq", "Grok (xAI)"]:
             base_url = None
-            if provider == "Groq": base_url="[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)"
-            elif provider == "Grok (xAI)": base_url="[https://api.x.ai/v1](https://api.x.ai/v1)"
+            if provider == "Groq": base_url="https://api.groq.com/openai/v1"
+            elif provider == "Grok (xAI)": base_url="https://api.x.ai/v1"
             
             client = OpenAI(api_key=api_key, base_url=base_url)
             response = client.chat.completions.create(
@@ -311,11 +310,11 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
                 elif provider == "Claude (Anthropic)": models = aiversion.get_anthropic_models(api_key)
                 elif provider == "Groq": 
                     try:
-                        models = aiversion.get_openai_models(api_key, base_url="[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)")
+                        models = aiversion.get_openai_models(api_key, base_url="https://api.groq.com/openai/v1")
                     except:
                         models = ["llama3-8b-8192", "llama3-70b-8192"]
                         st.warning("⚠️ Elenco modelli Groq non disponibile. Caricati modelli standard.")
-                elif provider == "Grok (xAI)": models = aiversion.get_openai_models(api_key, base_url="[https://api.x.ai/v1](https://api.x.ai/v1)")
+                elif provider == "Grok (xAI)": models = aiversion.get_openai_models(api_key, base_url="https://api.x.ai/v1")
             except:
                 models = []
         
@@ -366,6 +365,19 @@ if "phase2_history" not in st.session_state: st.session_state.phase2_history = [
 # --- MAIN ---
 st.title("🦁 Timmy Wonka R&D")
 
+# DEBUG VISIVO (Checkbox per vedere il Catalogo caricato)
+show_debug_catalog = st.checkbox("✅ Debug: Mostra Catalogo Completo caricato per controllo duplicati", value=False)
+
+if show_debug_catalog:
+    st.caption("Contenuto del Catalogo Completo (Estratto da Sheets, Indice 1):")
+    catalog_list_debug = load_catalog_titles()
+    if catalog_list_debug:
+        st.code('\n'.join(catalog_list_debug), language='text')
+    else:
+        st.warning("⚠️ ATTENZIONE: Nessun titolo del catalogo caricato. Controlla il nome della scheda (CatalogoCompleto) e i permessi.")
+    st.markdown("---")
+
+
 # ARCHIVIO
 with st.expander("📂 Archivio Idee (Database)", expanded=False):
     if st.button("🔄 Aggiorna DB"): st.rerun()
@@ -390,6 +402,9 @@ st.session_state.activity_input = activity_input
 if st.button("✨ Inventa 2 Idee", type="primary"):
     with st.spinner("Brainstorming..."):
         
+        catalog_list = load_catalog_titles()
+        catalog_prompt = "\n".join(catalog_list)
+        
         budget_str = "Libero" if (capex+opex+rrp)==0 else f"Fissi {capex}€, Var {opex}€, Vendita {rrp}€"
         
         prompt = f"""
@@ -397,7 +412,11 @@ if st.button("✨ Inventa 2 Idee", type="primary"):
         Vibe: {vibes_input}. Budget: {budget_str}. 
         Logistica: {tech_level}, {phys_level}, {', '.join(locs)}.
         
-        [Rimosso il contesto del Catalogo Completo per la velocità. Ora inventa liberamente.]
+        IMPORTANTE: NON generare idee che siano SIMILI a quelle presenti nel Catalogo Completo sottostante.
+        Catalogo Completo (Titolo e Tema):
+        ---
+        {catalog_prompt}
+        ---
         """
         response = call_ai(provider, selected_model, api_key, prompt, json_mode=True)
         if isinstance(response, list):
@@ -535,4 +554,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, file_name_pitch)
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.32 (Definitive Module Fix) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.33 (Debug Catalogo) - Powered by Teambuilding.it")
