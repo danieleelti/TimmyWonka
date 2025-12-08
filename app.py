@@ -54,7 +54,7 @@ def load_catalog_titles():
         print(f"Errore caricamento Catalogo: {e}")
         return []
 
-# MODIFICATA LA FUNZIONE PER SALVARE LA DESCRIZIONE NELLA SECONDA COLONNA
+
 def save_to_gsheet(title, description, vibe, author, full_concept):
     sheet = get_db_connection(worksheet_index=0)
     if sheet:
@@ -67,13 +67,13 @@ def save_to_gsheet(title, description, vibe, author, full_concept):
             if title in titles:
                 return False 
             
-            # NOTA: La colonna "Tema" ora conterrà la descrizione del concept
+            # NOTA: La colonna "Tema" conterrà la descrizione del concept
             if not titles:
                 sheet.append_row(["Titolo", "Tema", "Vibe", "Data", "Autore", "Concept"])
 
             date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-            # Mappatura aggiornata: description va al posto di theme
-            row = [title, description, vibe, date_str, author, full_concept]
+            # ROW MODIFICATA: Troncata dopo la quarta colonna (Data)
+            row = [title, description, vibe, date_str] 
             sheet.append_row(row)
             return True
         except Exception as e:
@@ -323,12 +323,11 @@ if st.session_state.concepts_list:
     
     for idx, concept in enumerate(st.session_state.concepts_list):
         with st.container(border=True):
-            # 1. Estrazione della descrizione completa per il salvataggio
             concept_title = concept.get('titolo', concept.get('title', 'Senza Titolo'))
-            concept_description = concept.get('descrizione', concept.get('description', 'Nessuna descrizione fornita dall\'AI.')) # Estrai descrizione
+            concept_description = concept.get('descrizione', concept.get('description', 'Nessuna descrizione fornita dall\'AI.'))
             
             st.subheader(f"{idx+1}. {concept_title}")
-            st.markdown(concept_description) # Visualizza la descrizione
+            st.markdown(concept_description)
             
             c1, c2, c3 = st.columns([1, 1, 1])
             
@@ -337,9 +336,10 @@ if st.session_state.concepts_list:
                 st.session_state.assets = ""
                 st.success(f"Selezionato: {concept_title}")
             
-            # CHIAMATA ALLA NUOVA FUNZIONE DI SALVATAGGIO
+            # CHIAMATA ALLA FUNZIONE DI SALVATAGGIO
             if c2.button("💾 Salva per dopo", key=f"save_{idx}"):
                 # Mappatura: title, description, vibe, author, full_json
+                # Il row sarà troncato a 4 elementi: Titolo, Descrizione, Vibe, Data
                 res = save_to_gsheet(concept_title, concept_description, vibes_input, f"{provider}", str(concept)) 
                 if res: st.toast(f"✅ Salvato: {concept_title}")
                 else: st.toast("⚠️ Già nel DB")
@@ -387,4 +387,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.22 (Salvataggio Corretto) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.23 (Truncation Save) - Powered by Teambuilding.it")
