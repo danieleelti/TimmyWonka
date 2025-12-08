@@ -71,6 +71,7 @@ def save_to_gsheet(title, description, vibe, author, full_concept):
                 sheet.append_row(["Titolo", "Tema", "Vibe", "Data", "Autore", "Concept"])
 
             date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+            # Salva solo Titolo, Descrizione (Asset), Vibe, Data
             row = [title, description, vibe, date_str] 
             sheet.append_row(row)
             return True
@@ -126,7 +127,7 @@ if not st.session_state.authenticated:
     st.stop()
 
 # ==============================================================================
-# LOGICA AI (Adattata per chat history)
+# LOGICA AI
 # ==============================================================================
 
 SYSTEM_PROMPT = """
@@ -176,7 +177,8 @@ def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel(model_id)
             
-            final_prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages[1:]])
+            # Per Gemini, si concatena la history (funziona per chat semplici come questa)
+            final_prompt = "\n".join([f"[{m['role'].upper()}]: {m['content']}" for m in messages[1:]])
             response = model.generate_content(final_prompt)
             text_response = response.text
         
@@ -209,25 +211,35 @@ def generate_technical_sheet(concept_title, activity_input, vibes_input, provide
     st.session_state.assets = call_ai(provider, selected_model, api_key, initial_prompt, json_mode=False)
     
     st.session_state.phase2_history = [
-        ("user", initial_prompt),
+        ("user", "Inizio Fase 2: Richiesta Scheda Tecnica Dettagliata."),
         ("assistant", st.session_state.assets)
     ]
 
-
-def refine_technical_sheet(comment):
-    """Aggiunge un messaggio alla chat history e chiama l'AI per la modifica."""
+def handle_refinement_turn(comment):
+    """Gestisce un turno di chat, aggiorna la history e l'asset principale."""
     
-    st.session_state.phase2_history.append(("user", f"Richiesta di modifica/commento: {comment}"))
+    st.session_state.phase2_history.append(("user", comment))
 
     history_messages = st.session_state.phase2_history 
     
-    last_prompt = f"""
-    Rivedi e ricrea la Scheda Tecnica precedente in base al mio ultimo commento/richiesta di modifica. 
-    L'output deve essere SOLO la Scheda Tecnica finale, completa, in Markdown.
-    MANTIENI IL FOCUS SULLE DINAMICHE: NON INCLUDERE COSTI O ANALISI FINANZIARIE.
-    """
+    # Check if the user is asking for a final summary/conclusion
+    is_final_summary_request = "riassunto" in comment.lower() or "finale" in comment.lower() or "salvare" in comment.lower()
+
+    if is_final_summary_request:
+        last_prompt = f"""
+        L'utente sta chiedendo un riassunto finale o un documento da salvare. 
+        Basandoti sulla Scheda Tecnica attuale (che è il contenuto della penultima risposta dell'assistente nella history), genera un documento di riepilogo pulito e finale in Markdown. 
+        L'output deve essere SOLO il documento di riepilogo/conclusione.
+        """
+    else:
+        # If user asks for modification or new material, the AI should use the full context
+        last_prompt = f"""
+        Rispondi alla richiesta dell'utente. Se l'utente chiede una modifica alla Scheda Tecnica, ricreala interamente con le revisioni richieste. Se l'utente chiede un nuovo materiale (es. lista di controllo, pitch), produci quel materiale.
+        L'output deve essere SOLO il contenuto richiesto in Markdown.
+        MANTIENI IL FOCUS SULLE DINAMICHE: NON INCLUDERE COSTI O ANALISI FINANZIARIE.
+        """
     
-    new_asset = call_ai(
+    new_response = call_ai(
         st.session_state.provider, 
         st.session_state.selected_model, 
         st.session_state.api_key, 
@@ -236,8 +248,10 @@ def refine_technical_sheet(comment):
         json_mode=False
     )
     
-    st.session_state.assets = new_asset
-    st.session_state.phase2_history.append(("assistant", new_asset))
+    st.session_state.phase2_history.append(("assistant", new_response))
+
+    # Update st.session_state.assets with the latest full output for saving
+    st.session_state.assets = new_response
 
 
 # ==============================================================================
@@ -422,27 +436,46 @@ if st.session_state.selected_concept:
 
     # 2. VISUALIZZAZIONE E CHAT CONTROLLER
     if st.session_state.assets:
-        with st.expander("📝 VEDI SCHEDA TECNICA", expanded=True):
+        
+        st.info(f"L'ultimo output di Timmy Wonka è salvato come asset finale. Per salvarlo, premi il pulsante 'Salva Versione Finale'.")
+        
+        # Scheda Tecnica Attuale (nascosta per default per non ingombrare la chat)
+        with st.expander("📝 VEDI ULTIMO ASSET PRODOTTO", expanded=False):
             st.markdown(st.session_state.assets)
 
-        st.subheader("Modifiche e Commenti:")
+        st.subheader("Chat di Refinement 💬")
+        
+        # Visualizza la history della chat
+        for role, content in st.session_state.phase2_history:
+            if role == "user":
+                st.chat_message("user").markdown(content)
+            elif role == "assistant":
+                st.chat_message("assistant").markdown(content)
+
+        # Controlli Chat e Salvataggio
         col_c, col_s = st.columns([4, 1])
         
-        comment_input = col_c.text_area("Chiedi a Timmy di modificare/migliorare la scheda tecnica attuale:", key="comment_input", height=100)
+        comment_input = col_c.text_area(
+            "Chiedi a Timmy Wonka una modifica, un approfondimento o un riassunto finale da salvare:", 
+            key="comment_input", 
+            height=100
+        )
         
-        if col_c.button("💬 Invia Modifiche / Rigenera", use_container_width=True):
+        if col_c.button("💬 Invia Richiesta / Continua la Chat", use_container_width=True):
             if comment_input:
-                with st.spinner("Timmy sta revisionando la scheda in base ai tuoi commenti..."):
-                    refine_technical_sheet(comment_input)
-                    del st.session_state.comment_input # FIX: Elimina la chiave per pulire il campo
+                with st.spinner("Timmy sta elaborando la richiesta..."):
+                    handle_refinement_turn(comment_input) 
+                    
+                    # FIX: Elimina la chiave per pulire il campo di testo senza StreamlitAPIException
+                    del st.session_state.comment_input 
                     st.rerun()
             else:
-                st.warning("Scrivi un commento o una richiesta di modifica!")
+                st.warning("Scrivi un commento o una richiesta!")
 
         if col_s.button("💾 Salva Versione Finale", type="primary", use_container_width=True):
             
             final_title = st.session_state.selected_concept
-            final_description = st.session_state.assets # Assets contiene l'ultima versione Markdown
+            final_description = st.session_state.assets 
             original_vibe = st.session_state.vibes_input
             
             res = save_to_gsheet(
@@ -458,16 +491,18 @@ if st.session_state.selected_concept:
 
 
 # FASE 3
+# La Fase 3 può essere ancora lanciata basandosi sull'ultimo assets
 if st.session_state.assets:
+    st.divider()
     st.header("Fase 3: Sales Pitch 💼")
     if st.button("Genera Slide"):
         with st.spinner("Writing pitch..."):
-            # Usiamo il provider salvato in session state per garantire consistenza
             p_pitch = f"Sales pitch per '{st.session_state.selected_concept}'. Target HR. Prezzo {rrp}."
-            pitch_res = call_ai(st.session_state.provider, st.session_state.selected_model, st.session_state.api_key, p_pitch, json_mode=False)
+            # Si usa la history attuale per dare contesto al pitch
+            pitch_res = call_ai(st.session_state.provider, st.session_state.selected_model, st.session_state.api_key, p_pitch, history=st.session_state.phase2_history, json_mode=False)
             
             st.markdown(pitch_res)
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.26 (Refinement Focus & API Fix) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.27 (Full Chat Refinement) - Powered by Teambuilding.it")
