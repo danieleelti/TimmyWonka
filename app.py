@@ -67,12 +67,10 @@ def save_to_gsheet(title, description, vibe, author, full_concept):
             if title in titles:
                 return False 
             
-            # NOTA: La colonna "Tema" conterrà la descrizione del concept
             if not titles:
                 sheet.append_row(["Titolo", "Tema", "Vibe", "Data", "Autore", "Concept"])
 
             date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-            # ROW MODIFICATA: Troncata dopo la quarta colonna (Data)
             row = [title, description, vibe, date_str] 
             sheet.append_row(row)
             return True
@@ -199,6 +197,19 @@ def call_ai(provider, model_id, api_key, prompt, json_mode=False):
         if json_mode: return [{"titolo": "Errore API", "descrizione": f"Errore tecnico: {str(e)}"}]
         else: return f"❌ Errore API: {str(e)}"
 
+
+def generate_technical_sheet(concept_title, activity_input, vibes_input, provider, selected_model, api_key):
+    """Funzione che incapsula la logica di generazione della Scheda Tecnica (Fase 2)."""
+    with st.spinner("Elaborazione tecnica automatica..."):
+        prompt = f"""
+        Scheda tecnica dettagliata per il format: "{concept_title}".
+        Tema: {activity_input}. Vibe: {vibes_input}.
+        Output richiesto in Markdown ben formattato.
+        NO Acronimi.
+        """
+        st.session_state.assets = call_ai(provider, selected_model, api_key, prompt, json_mode=False)
+
+
 # ==============================================================================
 # INTERFACCIA
 # ==============================================================================
@@ -272,6 +283,7 @@ with st.sidebar:
 if "concepts_list" not in st.session_state: st.session_state.concepts_list = []
 if "selected_concept" not in st.session_state: st.session_state.selected_concept = ""
 if "assets" not in st.session_state: st.session_state.assets = ""
+if "autogenerate_assets" not in st.session_state: st.session_state.autogenerate_assets = False # Nuovo flag per l'automazione
 
 # --- MAIN ---
 st.title("🦁 Timmy Wonka R&D")
@@ -289,7 +301,8 @@ with st.expander("📂 Archivio Idee (Database)", expanded=False):
             if st.button("🔽 Carica in Fase 2"):
                 st.session_state.selected_concept = sel_saved
                 st.session_state.assets = ""
-                st.success(f"Caricato: {sel_saved}. Scorri giù.")
+                st.session_state.autogenerate_assets = True # Attiva l'autogenerazione
+                st.rerun() 
 
 # FASE 1
 st.header("Fase 1: Ideazione 💡")
@@ -297,9 +310,6 @@ activity_input = st.text_area("Tema Base", placeholder="Es. Robot Wars, La cacci
 
 if st.button("✨ Inventa 2 Idee", type="primary"):
     with st.spinner("Brainstorming..."):
-        
-        catalog_list = load_catalog_titles()
-        catalog_prompt = "\n".join(catalog_list)
         
         budget_str = "Libero" if (capex+opex+rrp)==0 else f"Fissi {capex}€, Var {opex}€, Vendita {rrp}€"
         
@@ -331,15 +341,14 @@ if st.session_state.concepts_list:
             
             c1, c2, c3 = st.columns([1, 1, 1])
             
+            # PULSANTE APPROFONDISCI (ora con autogenerazione)
             if c1.button("🚀 Approfondisci", key=f"app_{idx}"):
                 st.session_state.selected_concept = concept_title
                 st.session_state.assets = ""
-                st.success(f"Selezionato: {concept_title}")
+                st.session_state.autogenerate_assets = True # Attiva l'autogenerazione
+                st.rerun()
             
-            # CHIAMATA ALLA FUNZIONE DI SALVATAGGIO
             if c2.button("💾 Salva per dopo", key=f"save_{idx}"):
-                # Mappatura: title, description, vibe, author, full_json
-                # Il row sarà troncato a 4 elementi: Titolo, Descrizione, Vibe, Data
                 res = save_to_gsheet(concept_title, concept_description, vibes_input, f"{provider}", str(concept)) 
                 if res: st.toast(f"✅ Salvato: {concept_title}")
                 else: st.toast("⚠️ Già nel DB")
@@ -356,24 +365,53 @@ if st.session_state.concepts_list:
                         st.session_state.concepts_list[idx] = new_concept[0]
                         st.rerun()
 
-# FASE 2
+# FASE 2: LOGICA DI GENERAZIONE AUTOMATICA
 if st.session_state.selected_concept:
     st.divider()
     st.header(f"Fase 2: Deep Dive su '{st.session_state.selected_concept}' 🛠️")
-    
-    if st.button(f"Genera Scheda Tecnica con {provider}"):
-        with st.spinner("Elaborazione tecnica..."):
-            prompt = f"""
-            Scheda tecnica dettagliata per il format: "{st.session_state.selected_concept}".
-            Tema: {activity_input}. Vibe: {vibes_input}.
-            Output richiesto in Markdown ben formattato.
-            NO Acronimi.
-            """
-            st.session_state.assets = call_ai(provider, selected_model, api_key, prompt, json_mode=False)
 
-if st.session_state.assets:
-    with st.expander("📝 VEDI SCHEDA TECNICA", expanded=True):
-        st.markdown(st.session_state.assets)
+    # LOGICA DI AUTO-GENERAZIONE: Scatta se il flag è True (cioè se Approfondisci è stato appena cliccato)
+    if st.session_state.autogenerate_assets:
+        # Chiamata alla funzione di generazione
+        generate_technical_sheet(
+            st.session_state.selected_concept, 
+            activity_input, 
+            vibes_input, 
+            provider, 
+            selected_model, 
+            api_key
+        )
+        st.session_state.autogenerate_assets = False # Disattiva il flag dopo l'uso
+
+
+# VISUALIZZAZIONE E PULSANTE MANUALE/RIGENERA
+if st.session_state.selected_concept:
+    # Mostra l'output se è stato generato (sia automaticamente che manualmente)
+    if st.session_state.assets:
+        with st.expander("📝 VEDI SCHEDA TECNICA", expanded=True):
+            st.markdown(st.session_state.assets)
+        
+        # Pulsante di rigenerazione (se l'output esiste)
+        if st.button(f"🔄 Rigenera Scheda Tecnica con {provider}"):
+            generate_technical_sheet(
+                st.session_state.selected_concept, 
+                activity_input, 
+                vibes_input, 
+                provider, 
+                selected_model, 
+                api_key
+            )
+    else:
+        # Pulsante di generazione manuale (se l'output non esiste ancora)
+        if st.button(f"Genera Scheda Tecnica con {provider}"):
+            generate_technical_sheet(
+                st.session_state.selected_concept, 
+                activity_input, 
+                vibes_input, 
+                provider, 
+                selected_model, 
+                api_key
+            )
 
 # FASE 3
 if st.session_state.assets:
@@ -387,4 +425,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.23 (Truncation Save) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.24 (Auto Deep-Dive) - Powered by Teambuilding.it")
