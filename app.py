@@ -23,7 +23,6 @@ def get_db_connection(worksheet_index=0):
                 creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             client = gspread.authorize(creds)
-            # Ritorna la scheda specificata dall'indice
             return client.open(SHEET_NAME).get_worksheet(worksheet_index)
         return None
     except Exception as e:
@@ -31,7 +30,6 @@ def get_db_connection(worksheet_index=0):
         return None
 
 def load_db_ideas():
-    # Legge il foglio Archivio Idee (indice 0)
     sheet = get_db_connection(worksheet_index=0)
     if sheet:
         try:
@@ -43,14 +41,11 @@ def load_db_ideas():
 def load_catalog_titles():
     """Carica solo Titoli e Temi dal Catalogo Completo per il prompt AI."""
     try:
-        # Tenta di caricare il foglio CatalogoCompleto (indice 1)
         sheet = get_db_connection(worksheet_index=1) 
         if sheet:
-            # Recupera solo le colonne 1 (Titolo) e 2 (Tema) per minimizzare i token
             titles = sheet.col_values(1)[1:] if sheet.col_values(1) else []
             themes = sheet.col_values(2)[1:] if sheet.col_values(2) else []
             
-            # Combina i dati in una lista di stringhe compatta per il prompt
             catalog_list = [f"Titolo: {t}, Tema: {th}" for t, th in zip(titles, themes) if t and th]
             
             return catalog_list
@@ -61,7 +56,6 @@ def load_catalog_titles():
 
 
 def save_to_gsheet(title, theme, vibe, author, full_concept):
-    # Salva nel foglio Archivio (indice 0)
     sheet = get_db_connection(worksheet_index=0)
     if sheet:
         try:
@@ -174,6 +168,7 @@ def call_ai(provider, model_id, api_key, prompt, json_mode=False):
             )
             text_response = message.content[0].text
         elif provider == "Groq":
+            # Groq uses the OpenAI SDK format with a custom base_url
             client = OpenAI(base_url="[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)", api_key=api_key)
             response = client.chat.completions.create(
                 model=model_id, messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": full_prompt}]
@@ -225,7 +220,14 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
                 if provider == "Google Gemini": models = aiversion.get_gemini_models(api_key)
                 elif provider == "ChatGPT": models = aiversion.get_openai_models(api_key)
                 elif provider == "Claude (Anthropic)": models = aiversion.get_anthropic_models(api_key)
-                elif provider == "Groq": models = aiversion.get_openai_models(api_key, base_url="[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)")
+                # FIX: Fallback manuale per Groq se la lista dinamica fallisce
+                elif provider == "Groq": 
+                    try:
+                        models = aiversion.get_openai_models(api_key, base_url="[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)")
+                    except:
+                        # Fallback a modelli noti e stabili
+                        models = ["llama3-8b-8192", "llama3-70b-8192"]
+                        st.warning("⚠️ Elenco modelli Groq non disponibile. Caricati modelli standard.")
                 elif provider == "Grok (xAI)": models = aiversion.get_openai_models(api_key, base_url="[https://api.x.ai/v1](https://api.x.ai/v1)")
             except:
                 models = []
@@ -241,7 +243,7 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
             
             selected_model = st.selectbox("Versione", models, index=default_index)
         else:
-            selected_model = st.text_input("Versione Manuale (es. gemini-1.5-pro)")
+            selected_model = st.text_input("Versione Manuale (es. llama3-8b-8192)")
 
 st.divider()
 
@@ -384,4 +386,4 @@ if st.session_state.assets:
             st.download_button("Scarica Pitch", pitch_res, "pitch.txt")
 
 st.markdown("---")
-st.caption("Timmy Wonka v2.17 (Catalog Integration) - Powered by Teambuilding.it")
+st.caption("Timmy Wonka v2.18 (Groq Fix) - Powered by Teambuilding.it")
