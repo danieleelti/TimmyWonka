@@ -228,6 +228,12 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
             )
         st.session_state.selected_model = selected_model
 
+if provider == "Groq" and not selected_model:
+    # Default consigliato (puoi cambiare a seconda del tuo caso)
+    default_model = "llama3-70b-8192"   # oppure "mixtral-8x7b-32768"
+    selected_model = default_model
+    st.session_state.selected_model = selected_model
+
 
 # ----------------------------------------------------------------------
 # FUNZIONE GENERICA DI CHIAMATA AI
