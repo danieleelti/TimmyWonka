@@ -197,8 +197,7 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
                     models = aiversion.get_anthropic_models(api_key)
 
                 elif provider == "Groq":
-                    # --- CORREZIONE: LISTA HARDCODED PER EVITARE MODELLI DEPRECATED ---
-                    # Mixtral-8x7b-32768 è stato rimosso da Groq.
+                    # --- LISTA MODELLI GROQ AGGIORNATA ---
                     models = [
                         "llama-3.3-70b-versatile",
                         "llama-3.1-70b-versatile",
@@ -576,10 +575,8 @@ if st.session_state.selected_concept:
         st.session_state.autogenerate_assets = False
 
     if st.session_state.assets:
-        st.info("L'ultimo output di Timmy Wonka è salvato come asset finale. Per modificarlo, usa la chat qui sotto.")
-        with st.expander("📝 VEDI ULTIMO ASSET PRODOTTO", expanded=False):
-            st.markdown(st.session_state.assets)
-
+        # HO RIMOSSO IL BLOCCO 'st.expander' CHE DUPLICAVA IL CONTENUTO.
+        
         st.subheader("Chat di Refinement 💬")
         for role, content in st.session_state.phase2_history:
             if role == "user":
