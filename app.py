@@ -153,7 +153,7 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
         provider = st.selectbox(
             "Provider",
             ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"],
-            key="unique_provider_selector"  # <-- CHIAVE UNICA PER IL PRIMO SELECTBOX
+            key="unique_provider_selector"
         )
         st.session_state.provider = provider
 
@@ -197,13 +197,16 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
                     models = aiversion.get_anthropic_models(api_key)
 
                 elif provider == "Groq":
-                    # Usa la funzione dedicata a Groq
-                    # Assicurati che 'get_groq_models' sia definita se la usi, 
-                    # altrimenti qui c'è un placeholder se non è importata da aiversion
-                    if hasattr(aiversion, 'get_groq_models'):
-                        models = aiversion.get_groq_models(api_key)
-                    else:
-                        models = ["llama3-8b-8192", "mixtral-8x7b-32768"] # Fallback
+                    # --- CORREZIONE: LISTA HARDCODED PER EVITARE MODELLI DEPRECATED ---
+                    # Mixtral-8x7b-32768 è stato rimosso da Groq.
+                    models = [
+                        "llama-3.3-70b-versatile",
+                        "llama-3.1-70b-versatile",
+                        "llama-3.1-8b-instant",
+                        "llama3-70b-8192",
+                        "llama3-8b-8192",
+                        "gemma2-9b-it"
+                    ]
 
                 elif provider == "Grok (xAI)":
                     models = aiversion.get_openai_models(
@@ -218,16 +221,15 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
         default_index = 0
         if models and "Errore" not in models[0]:
             if provider == "Google Gemini":
-                default_model = "gemini-1.5-pro-latest" # Esempio di default
+                default_model = "gemini-1.5-pro-latest"
                 try:
                     default_index = models.index(default_model)
                 except ValueError:
                     pass
-            # AGGIUNTA KEY UNICA QUI
+            
             selected_model = st.selectbox("Versione", models, index=default_index, key="unique_version_selector")
         else:
-            fallback = "llama3-8b-8192" if provider == "Groq" else ""
-            # AGGIUNTA KEY UNICA ANCHE QUI
+            fallback = "llama-3.3-70b-versatile" if provider == "Groq" else ""
             selected_model = st.text_input(
                 "Versione Manuale (es. gemini-1.5-pro, llama3-8b-8192)",
                 value=fallback,
@@ -407,9 +409,6 @@ def handle_refinement_turn(comment):
 # ----------------------------------------------------------------------
 # INTERFACCIA UTENTE
 # ----------------------------------------------------------------------
-# La configurazione AI è già stata fatta sopra nel blocco "Configurazione Cervello AI".
-# Qui gestiamo Sidebar e Main content.
-
 # ----- SIDEBAR -----
 with st.sidebar:
     st.title("🆕 Nuovo Format")
