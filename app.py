@@ -375,9 +375,10 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
     c1, c2, c3 = st.columns([1, 1, 2])
     with c1:
         provider = st.selectbox(
-            "Provider",
-            ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"]
-        )
+    "Provider",
+    ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"],
+    key="unique_provider_selector"  # <-- ADD THIS UNIQUE KEY
+)
         st.session_state.provider = provider
 
     with c2:
