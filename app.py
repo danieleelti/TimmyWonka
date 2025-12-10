@@ -354,15 +354,35 @@ def safe_call_ai(provider, model_id, api_key, prompt, history=None, json_mode=Fa
 def generate_technical_sheet(concept_title, activity_input, vibes_input,
                              provider, selected_model, api_key):
     """Inizializza la Fase 2 e la chat history."""
+    
+    # Recupero i valori di budget dalla session_state se disponibili
+    # (Sono stati definiti nella sidebar ma per sicurezza li leggiamo qui, 
+    # dato che generate_technical_sheet viene chiamata con argomenti espliciti, 
+    # ma possiamo accedere a st.session_state per completezza)
+    
+    # Costruiamo una stringa di budget se l'utente ha inserito qualcosa
+    # (Non passata esplicitamente negli argomenti della funzione precedente, 
+    # quindi usiamo st.session_state o un valore generico)
+    
+    # <<< MODIFICA: RECUPERO DATI BUDGET DALLA SESSIONE PER IL PROMPT >>>
+    capex = st.session_state.get('capex', 0)
+    opex = st.session_state.get('opex', 0)
+    rrp = st.session_state.get('rrp', 0)
+    budget_info = f"Budget Previsto: Costi Fissi {capex}€, Costi Variabili {opex}€/pax, Prezzo Vendita {rrp}€/pax."
+
     initial_prompt = f"""
     Genera la Scheda Tecnica dettagliata per il format: "{concept_title}".
     Tema Originale: {activity_input}. Vibe: {vibes_input}.
+    {budget_info}
      
     Output richiesto: Scheda Tecnica completa, formattata in Markdown.
-    IMPORTANTE: La descrizione deve focalizzarsi ESCLUSIVAMENTE sulle dinamiche, l'esperienza utente e la logistica. 
-    NON includere analisi di costi/benefici, prezzi, o calcoli finanziari.
+    IMPORTANTE: La descrizione deve focalizzarsi sulle dinamiche, l'esperienza utente e la logistica.
+    Se i dati di budget sono > 0, includi una breve analisi di fattibilità economica.
     NO Acronimi.
     """
+    
+    # <<< MODIFICA: Ho rimosso il divieto "NON includere analisi di costi..." >>>
+
     st.session_state.assets = safe_call_ai(provider, selected_model, api_key,
                                            initial_prompt, json_mode=False)
     st.session_state.phase2_history = [
@@ -387,10 +407,12 @@ def handle_refinement_turn(comment):
         L'output deve essere SOLO il documento di riepilogo/conclusione.
         """
     else:
+        # <<< MODIFICA: Ho rimosso il divieto sui costi >>>
         last_prompt = """
-        Rispondi alla richiesta dell'utente. Se l'utente chiede una modifica alla Scheda Tecnica, ricreala interamente con le revisioni richieste. Se l'utente chiede un nuovo materiale (es. lista di controllo, pitch), produci quel materiale.
+        Rispondi alla richiesta dell'utente. Se l'utente chiede una modifica alla Scheda Tecnica, ricreala interamente con le revisioni richieste. 
+        Se l'utente chiede un nuovo materiale (es. lista di controllo, pitch) o una stima dei costi, produci quel materiale.
         L'output deve essere SOLO il contenuto richiesto in Markdown.
-        MANTIENI IL FOCUS SULLE DINAMICHE: NON INCLUDERE COSTI O ANALISI FINANZIARIE.
+        Se richiesto, fornisci stime economiche basate sui dati forniti o su standard di mercato ragionevoli.
         """
 
     new_response = safe_call_ai(
@@ -424,9 +446,13 @@ with st.sidebar:
     st.divider()
 
     st.subheader("3. Budget 💰")
+    # Li salvo in session_state per usarli nelle funzioni
     capex = st.number_input("Costi Fissi (€)", 0)
     opex = st.number_input("Costi Variabili/pax (€)", 0)
     rrp = st.number_input("Prezzo Vendita/pax (€)", 0)
+    st.session_state.capex = capex
+    st.session_state.opex = opex
+    st.session_state.rrp = rrp
 
 # ----- VARIABILI DI SESSIONE -----
 if "concepts_list" not in st.session_state:
@@ -575,8 +601,6 @@ if st.session_state.selected_concept:
         st.session_state.autogenerate_assets = False
 
     if st.session_state.assets:
-        # HO RIMOSSO IL BLOCCO 'st.expander' CHE DUPLICAVA IL CONTENUTO.
-        
         st.subheader("Chat di Refinement 💬")
         for role, content in st.session_state.phase2_history:
             if role == "user":
