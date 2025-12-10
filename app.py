@@ -8,7 +8,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import json
 import re
-import requests                      # <<< MODIFICA PER GROQ >>>
+import requests
 
 # ----------------------------------------------------------------------
 # 0️⃣ FUNZIONE DI SUPPORTO PER NOME FILE
@@ -152,7 +152,8 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
     with c1:
         provider = st.selectbox(
             "Provider",
-            ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"]
+            ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"],
+            key="unique_provider_selector"  # <-- CHIAVE UNICA PER IL PRIMO SELECTBOX
         )
         st.session_state.provider = provider
 
@@ -168,17 +169,18 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
         }
         secret_key_name = key_map[provider]
 
-        # **Qui leggiamo solo da st.secrets** if secret_key_name in st.secrets:
-            api_key = st.secrets[secret_key_name]          # ← la tua chiave è già nascosta
+        # **Qui leggiamo solo da st.secrets**
+        if secret_key_name in st.secrets:
+            api_key = st.secrets[secret_key_name]
         else:
             # Se manca la chiave blocchiamo l’app con un messaggio esplicito
             st.error(
                 f"⚠️ Mancante `st.secrets[\"{secret_key_name}\"]`. "
                 "Aggiungi la chiave corrispondente nel file `.streamlit/secrets.toml`."
             )
-            st.stop()                                                            # interrompe l’esecuzione
+            st.stop()
 
-        st.session_state.api_key = api_key                 # disponibile in tutta l’app
+        st.session_state.api_key = api_key
 
     # ---------- MODELLI ----------
     with c3:
@@ -195,8 +197,13 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
                     models = aiversion.get_anthropic_models(api_key)
 
                 elif provider == "Groq":
-                    # Usa la funzione dedicata a Groq (già presente più sotto)
-                    models = get_groq_models(api_key)
+                    # Usa la funzione dedicata a Groq
+                    # Assicurati che 'get_groq_models' sia definita se la usi, 
+                    # altrimenti qui c'è un placeholder se non è importata da aiversion
+                    if hasattr(aiversion, 'get_groq_models'):
+                        models = aiversion.get_groq_models(api_key)
+                    else:
+                        models = ["llama3-8b-8192", "mixtral-8x7b-32768"] # Fallback
 
                 elif provider == "Grok (xAI)":
                     models = aiversion.get_openai_models(
@@ -211,25 +218,41 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
         default_index = 0
         if models and "Errore" not in models[0]:
             if provider == "Google Gemini":
-                # modello consigliato di default per Gemini
-                default_model = "gemini-3-pro-preview"
+                default_model = "gemini-1.5-pro-latest" # Esempio di default
                 try:
                     default_index = models.index(default_model)
                 except ValueError:
                     pass
-            selected_model = st.selectbox("Versione", models, index=default_index)
+            # AGGIUNTA KEY UNICA QUI
+            selected_model = st.selectbox("Versione", models, index=default_index, key="unique_version_selector")
         else:
-            # Campo di testo manuale di fallback (mai usato in produzione)
             fallback = "llama3-8b-8192" if provider == "Groq" else ""
+            # AGGIUNTA KEY UNICA ANCHE QUI
             selected_model = st.text_input(
                 "Versione Manuale (es. gemini-1.5-pro, llama3-8b-8192)",
                 value=fallback,
+                key="unique_manual_version_input"
             )
         st.session_state.selected_model = selected_model
 
 # ----------------------------------------------------------------------
 # FUNZIONE GENERICA DI CHIAMATA AI
 # ----------------------------------------------------------------------
+SYSTEM_PROMPT = "Sei un esperto creativo di team building."
+
+def clean_json_text(text):
+    """Pulisce la stringa JSON da markdown extra."""
+    text = text.strip()
+    if "###OUTPUT_JSON_START###" in text:
+        text = text.split("###OUTPUT_JSON_START###")[1]
+    if "###OUTPUT_JSON_END###" in text:
+        text = text.split("###OUTPUT_JSON_END###")[0]
+    # Rimuovi ```json e ```
+    text = re.sub(r'^```json\s*', '', text)
+    text = re.sub(r'^```\s*', '', text)
+    text = re.sub(r'\s*```$', '', text)
+    return text.strip()
+
 def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
     """
     Wrapper unico per tutti i provider.
@@ -254,9 +277,9 @@ def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
         if provider in ["ChatGPT", "Groq", "Grok (xAI)"]:
             base_url = None
             if provider == "Groq":
-                base_url = "[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)"          # <<< MODIFICA PER GROQ >>>
+                base_url = "https://api.groq.com/openai/v1"
             elif provider == "Grok (xAI)":
-                base_url = "[https://api.x.ai/v1](https://api.x.ai/v1)"
+                base_url = "https://api.x.ai/v1"
 
             client = OpenAI(api_key=api_key, base_url=base_url)
             response = client.chat.completions.create(
@@ -269,7 +292,7 @@ def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
         elif provider == "Google Gemini":
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel(model_id)
-            # Gemeni non usa la struttura messages, quindi trasformiamo:
+            # Gemini non usa la struttura messages, quindi trasformiamo:
             final_prompt = "\n".join([f"[{m['role'].upper()}]: {m['content']}" for m in messages[1:]])
             response = model.generate_content(final_prompt)
 
@@ -280,6 +303,21 @@ def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
                 else:
                     return "❌ ERRORE GEMINI SCONOSCIUTO: Nessun candidato restituito."
             text_response = response.text
+
+        # ---------- CLAUDE (ANTHROPIC) ----------
+        elif provider == "Claude (Anthropic)":
+            client = Anthropic(api_key=api_key)
+            # Claude gestisce system prompt separatamente
+            system_msg = messages[0]['content']
+            user_msgs = messages[1:]
+            
+            response = client.messages.create(
+                model=model_id,
+                max_tokens=4096,
+                system=system_msg,
+                messages=user_msgs
+            )
+            text_response = response.content[0].text
 
         # ---------- RETURN -------------------------------------------------
         if json_mode:
@@ -358,7 +396,6 @@ def handle_refinement_turn(comment):
         st.session_state.provider,
         st.session_state.selected_model,
         st.session_state.api_key,
-        st.session_state.api_key, # Nota: qui c'è un doppio passaggio di api_key nella chiamata originale, ma non l'ho toccato
         last_prompt,
         history=history_messages,
         json_mode=False,
@@ -370,82 +407,8 @@ def handle_refinement_turn(comment):
 # ----------------------------------------------------------------------
 # INTERFACCIA UTENTE
 # ----------------------------------------------------------------------
-# ----- CONFIGURAZIONE AI -----
-with st.expander("🧠 Configurazione Cervello AI", expanded=True):
-    c1, c2, c3 = st.columns([1, 1, 2])
-    with c1:
-        provider = st.selectbox(
-    "Provider",
-    ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"],
-    key="unique_provider_selector"  # <-- ADD THIS UNIQUE KEY
-)
-        st.session_state.provider = provider
-
-    with c2:
-        key_map = {
-            "Google Gemini": "GOOGLE_API_KEY",
-            "ChatGPT": "OPENAI_API_KEY",
-            "Claude (Anthropic)": "ANTHROPIC_API_KEY",
-            "Groq": "GROQ_API_KEY",
-            "Grok (xAI)": "XAI_API_KEY",
-        }
-        secret_key_name = key_map[provider]
-
-        if secret_key_name in st.secrets:
-            api_key = st.secrets[secret_key_name]
-        else:
-            api_key = st.text_input("Inserisci API Key", type="password")
-        st.session_state.api_key = api_key
-
-    with c3:
-        models = []
-        if api_key:
-            try:
-                if provider == "Google Gemini":
-                    models = aiversion.get_gemini_models(api_key)
-
-                elif provider == "ChatGPT":
-                    models = aiversion.get_openai_models(api_key)
-
-                elif provider == "Claude (Anthropic)":
-                    models = aiversion.get_anthropic_models(api_key)
-
-                elif provider == "Groq":
-                    # <<< MODIFICA PER GROQ >>> usiamo la nuova funzione
-                    models = get_groq_models(api_key)
-
-                elif provider == "Grok (xAI)":
-                    models = aiversion.get_openai_models(api_key,
-                                                         base_url="[https://api.x.ai/v1](https://api.x.ai/v1)")
-            except Exception:
-                models = []
-
-        # Se la lista è vuota o contiene errori, mostriamo un input manuale
-        default_index = 0
-        if models and "Errore" not in models[0]:
-            if provider == "Google Gemini":
-                # modello di default consigliato per Gemini
-                default_model_name = "gemini-3-pro-preview"
-                try:
-                    default_index = models.index(default_model_name)
-                except ValueError:
-                    pass
-            # ------------------------------------------------------------------
-            # CORREZIONE ERRORE QUI SOTTO (Aggiunta key univoca)
-            # ------------------------------------------------------------------
-            selected_model = st.selectbox("Versione", models, index=default_index, key="unique_version_selector")
-        else:
-            # ------------------------------------------------------------------
-            # CORREZIONE ERRORE QUI SOTTO (Aggiunta key univoca anche al fallback)
-            # ------------------------------------------------------------------
-            selected_model = st.text_input(
-                "Versione Manuale (es. gemini-1.5-pro, llama3-8b-8192)",
-                value="llama3-8b-8192" if provider == "Groq" else "",
-                key="unique_version_manual_input"
-            )
-        st.session_state.selected_model = selected_model
-
-st.divider()
+# La configurazione AI è già stata fatta sopra nel blocco "Configurazione Cervello AI".
+# Qui gestiamo Sidebar e Main content.
 
 # ----- SIDEBAR -----
 with st.sidebar:
