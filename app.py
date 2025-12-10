@@ -143,49 +143,90 @@ if not st.session_state.authenticated:
 
 
 # ----------------------------------------------------------------------
-# 4️⃣ LOGICA AI
+# 4️⃣ LOGICA AI (solo la porzione di configurazione AI)
 # ----------------------------------------------------------------------
-SYSTEM_PROMPT = """
-SEI TIMMY WONKA, Direttore R&D di Teambuilding.it.
-Obiettivo: Sviluppare Format di team building divertenti, basati sul gioco (gamification e ludico), reali, scalabili e ad alto margine.
-IMPORTANTE: Non usare mai acronimi tecnici (Capex/Opex) nelle risposte. Usa "Costi Fissi", "Costi Variabili".
-"""
+with st.expander("🧠 Configurazione Cervello AI", expanded=True):
+    c1, c2, c3 = st.columns([1, 1, 2])
 
-def clean_json_text(text):
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(json)?", "", text)
-        text = re.sub(r"```$", "", text)
-        text = text.strip()
-    start_tag = "###OUTPUT_JSON_START###"
-    end_tag   = "###OUTPUT_JSON_END###"
-    if start_tag in text and end_tag in text:
-        start_index = text.find(start_tag) + len(start_tag)
-        end_index   = text.find(end_tag)
-        text = text[start_index:end_index].strip()
-    return text.strip()
+    # ---------- PROVIDER ----------
+    with c1:
+        provider = st.selectbox(
+            "Provider",
+            ["Google Gemini", "ChatGPT", "Claude (Anthropic)", "Groq", "Grok (xAI)"]
+        )
+        st.session_state.provider = provider
 
+    # ---------- API‑KEY (da secrets) ----------
+    with c2:
+        # Mappa Provider → nome della chiave nel file secrets.toml
+        key_map = {
+            "Google Gemini": "GOOGLE_API_KEY",
+            "ChatGPT": "OPENAI_API_KEY",
+            "Claude (Anthropic)": "ANTHROPIC_API_KEY",
+            "Groq": "GROQ_API_KEY",
+            "Grok (xAI)": "XAI_API_KEY",
+        }
+        secret_key_name = key_map[provider]
 
-# ----------------------------------------------------------------------
-# FUNZIONE SPECIFICA PER OTTENERE I MODELLI DI GROQ
-# ----------------------------------------------------------------------
-def get_groq_models(api_key: str) -> list[str]:
-    """
-    Interroga l'endpoint di Groq per restituire tutti i model IDs disponibili.
-    Se la chiamata fallisce, ritorna una lista di fallback comune.
-    """
-    url = "https://api.groq.com/openai/v1/models"
-    headers = {"Authorization": f"Bearer {api_key}"}
-    try:
-        resp = requests.get(url, headers=headers, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        # risposta tipica: {"data":[{"id":"llama3-8b-8192","object":"model",...},...]}
-        return [m["id"] for m in data.get("data", []) if m.get("object") == "model"]
-    except Exception as e:
-        st.warning(f"⚠️ Impossibile leggere i modelli da Groq: {e}")
-        # fallback a due modelli molto diffusi
-        return ["llama3-8b-8192", "llama3-70b-8192"]
+        # **Qui leggiamo solo da st.secrets**  
+        if secret_key_name in st.secrets:
+            api_key = st.secrets[secret_key_name]          # ← la tua chiave è già nascosta
+        else:
+            # Se manca la chiave blocchiamo l’app con un messaggio esplicito
+            st.error(
+                f"⚠️ Mancante `st.secrets[\"{secret_key_name}\"]`. "
+                "Aggiungi la chiave corrispondente nel file `.streamlit/secrets.toml`."
+            )
+            st.stop()                                        # interrompe l’esecuzione
+
+        st.session_state.api_key = api_key                 # disponibile in tutta l’app
+
+    # ---------- MODELLI ----------
+    with c3:
+        models = []
+        if api_key:
+            try:
+                if provider == "Google Gemini":
+                    models = aiversion.get_gemini_models(api_key)
+
+                elif provider == "ChatGPT":
+                    models = aiversion.get_openai_models(api_key)
+
+                elif provider == "Claude (Anthropic)":
+                    models = aiversion.get_anthropic_models(api_key)
+
+                elif provider == "Groq":
+                    # Usa la funzione dedicata a Groq (già presente più sotto)
+                    models = get_groq_models(api_key)
+
+                elif provider == "Grok (xAI)":
+                    models = aiversion.get_openai_models(
+                        api_key,
+                        base_url="https://api.x.ai/v1"
+                    )
+            except Exception as exc:
+                st.warning(f"⚠️ Impossibile recuperare i modelli: {exc}")
+                models = []
+
+        # Se la lista è vuota permetti l’inserimento manuale (utile per testing)
+        default_index = 0
+        if models and "Errore" not in models[0]:
+            if provider == "Google Gemini":
+                # modello consigliato di default per Gemini
+                default_model = "gemini-3-pro-preview"
+                try:
+                    default_index = models.index(default_model)
+                except ValueError:
+                    pass
+            selected_model = st.selectbox("Versione", models, index=default_index)
+        else:
+            # Campo di testo manuale di fallback (mai usato in produzione)
+            fallback = "llama3-8b-8192" if provider == "Groq" else ""
+            selected_model = st.text_input(
+                "Versione Manuale (es. gemini-1.5-pro, llama3-8b-8192)",
+                value=fallback,
+            )
+        st.session_state.selected_model = selected_model
 
 
 # ----------------------------------------------------------------------
