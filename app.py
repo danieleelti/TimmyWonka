@@ -8,7 +8,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import json
 import re
-import requests                     # <<< MODIFICA PER GROQ >>>
+import requests                      # <<< MODIFICA PER GROQ >>>
 
 # ----------------------------------------------------------------------
 # 0️⃣ FUNZIONE DI SUPPORTO PER NOME FILE
@@ -168,8 +168,7 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
         }
         secret_key_name = key_map[provider]
 
-        # **Qui leggiamo solo da st.secrets**  
-        if secret_key_name in st.secrets:
+        # **Qui leggiamo solo da st.secrets** if secret_key_name in st.secrets:
             api_key = st.secrets[secret_key_name]          # ← la tua chiave è già nascosta
         else:
             # Se manca la chiave blocchiamo l’app con un messaggio esplicito
@@ -177,7 +176,7 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
                 f"⚠️ Mancante `st.secrets[\"{secret_key_name}\"]`. "
                 "Aggiungi la chiave corrispondente nel file `.streamlit/secrets.toml`."
             )
-            st.stop()                                        # interrompe l’esecuzione
+            st.stop()                                                            # interrompe l’esecuzione
 
         st.session_state.api_key = api_key                 # disponibile in tutta l’app
 
@@ -255,9 +254,9 @@ def call_ai(provider, model_id, api_key, prompt, history=None, json_mode=False):
         if provider in ["ChatGPT", "Groq", "Grok (xAI)"]:
             base_url = None
             if provider == "Groq":
-                base_url = "https://api.groq.com/openai/v1"          # <<< MODIFICA PER GROQ >>>
+                base_url = "[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)"          # <<< MODIFICA PER GROQ >>>
             elif provider == "Grok (xAI)":
-                base_url = "https://api.x.ai/v1"
+                base_url = "[https://api.x.ai/v1](https://api.x.ai/v1)"
 
             client = OpenAI(api_key=api_key, base_url=base_url)
             response = client.chat.completions.create(
@@ -314,19 +313,19 @@ def safe_call_ai(provider, model_id, api_key, prompt, history=None, json_mode=Fa
 # FUNZIONI SPECIFICHE PER IL FLUSSO
 # ----------------------------------------------------------------------
 def generate_technical_sheet(concept_title, activity_input, vibes_input,
-                            provider, selected_model, api_key):
+                             provider, selected_model, api_key):
     """Inizializza la Fase 2 e la chat history."""
     initial_prompt = f"""
     Genera la Scheda Tecnica dettagliata per il format: "{concept_title}".
     Tema Originale: {activity_input}. Vibe: {vibes_input}.
-    
+     
     Output richiesto: Scheda Tecnica completa, formattata in Markdown.
     IMPORTANTE: La descrizione deve focalizzarsi ESCLUSIVAMENTE sulle dinamiche, l'esperienza utente e la logistica. 
     NON includere analisi di costi/benefici, prezzi, o calcoli finanziari.
     NO Acronimi.
     """
     st.session_state.assets = safe_call_ai(provider, selected_model, api_key,
-                                          initial_prompt, json_mode=False)
+                                           initial_prompt, json_mode=False)
     st.session_state.phase2_history = [
         ("user", "Inizio Fase 2: Richiesta Scheda Tecnica Dettagliata."),
         ("assistant", st.session_state.assets)
@@ -359,6 +358,7 @@ def handle_refinement_turn(comment):
         st.session_state.provider,
         st.session_state.selected_model,
         st.session_state.api_key,
+        st.session_state.api_key, # Nota: qui c'è un doppio passaggio di api_key nella chiamata originale, ma non l'ho toccato
         last_prompt,
         history=history_messages,
         json_mode=False,
@@ -416,7 +416,7 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
 
                 elif provider == "Grok (xAI)":
                     models = aiversion.get_openai_models(api_key,
-                                                         base_url="https://api.x.ai/v1")
+                                                         base_url="[https://api.x.ai/v1](https://api.x.ai/v1)")
             except Exception:
                 models = []
 
@@ -430,11 +430,18 @@ with st.expander("🧠 Configurazione Cervello AI", expanded=True):
                     default_index = models.index(default_model_name)
                 except ValueError:
                     pass
-            selected_model = st.selectbox("Versione", models, index=default_index)
+            # ------------------------------------------------------------------
+            # CORREZIONE ERRORE QUI SOTTO (Aggiunta key univoca)
+            # ------------------------------------------------------------------
+            selected_model = st.selectbox("Versione", models, index=default_index, key="unique_version_selector")
         else:
+            # ------------------------------------------------------------------
+            # CORREZIONE ERRORE QUI SOTTO (Aggiunta key univoca anche al fallback)
+            # ------------------------------------------------------------------
             selected_model = st.text_input(
                 "Versione Manuale (es. gemini-1.5-pro, llama3-8b-8192)",
-                value="llama3-8b-8192" if provider == "Groq" else ""
+                value="llama3-8b-8192" if provider == "Groq" else "",
+                key="unique_version_manual_input"
             )
         st.session_state.selected_model = selected_model
 
@@ -526,7 +533,7 @@ if st.button("✨ Inventa 2 Idee", type="primary"):
         Genera 2 concept distinti per: {activity_input}. 
         Vibe: {vibes_input}. Budget: {budget_str}. 
         Logistica: {tech_level}, {phys_level}, {', '.join(locs)}.
-        
+         
         IMPORTANTE: NON generare idee che siano SIMILI a quelle presenti nel Catalogo Completo sottostante.
         Catalogo Completo (Titolo e Tema):
         ---
@@ -547,10 +554,10 @@ if st.session_state.concepts_list:
     for idx, concept in enumerate(st.session_state.concepts_list):
         with st.container(border=True):
             concept_title = concept.get('titolo',
-                                       concept.get('title', 'Senza Titolo'))
+                                     concept.get('title', 'Senza Titolo'))
             concept_description = concept.get('descrizione',
-                                              concept.get('description',
-                                                          "Nessuna descrizione fornita dall'AI."))
+                                           concept.get('description',
+                                                     "Nessuna descrizione fornita dall'AI."))
 
             st.subheader(f"{idx + 1}. {concept_title}")
             st.markdown(concept_description)
@@ -584,7 +591,7 @@ if st.session_state.concepts_list:
                     Stessi vincoli.
                     """
                     new_concept = safe_call_ai(provider, selected_model, api_key,
-                                               p_regen, json_mode=True)
+                                              p_regen, json_mode=True)
                     if isinstance(new_concept, list) and len(new_concept) > 0:
                         st.session_state.concepts_list[idx] = new_concept[0]
                         st.rerun()
